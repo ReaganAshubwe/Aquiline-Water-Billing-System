@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aqualine Water Billing Company</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              aqua: {
+                50: '#f0fbff',
+                100: '#dff6ff',
+                200: '#bfefff',
+                300: '#94e3ff',
+                400: '#5dd2ff',
+                500: '#2abcf6',
+                600: '#129fd7',
+                700: '#1281ae',
+                800: '#166b8e',
+                900: '#185a76'
+              }
+            },
+            boxShadow: {
+              soft: '0 10px 30px rgba(18, 129, 174, 0.15)'
+            },
+            animation: {
+              floatSlow: 'floatSlow 4s ease-in-out infinite',
+              fadeUp: 'fadeUp 0.6s ease-out forwards'
+            },
+            keyframes: {
+              floatSlow: {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-8px)' }
+              },
+              fadeUp: {
+                '0%': { opacity: '0', transform: 'translateY(20px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' }
+              }
+            }
+          }
+        }
+      };
+    </script>
+    <style>
+      body,
+      header,
+      main section,
+      input,
+      select,
+      button,
+      #toast {
+        transition: background-color 220ms ease, color 220ms ease, border-color 220ms ease,
+          transform 180ms ease, box-shadow 220ms ease;
+      }
+
+      main section:hover {
+        transform: translateY(-2px);
+      }
+
+      @keyframes subtleFloat {
+        0%,
+        100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-3px);
+        }
+      }
+
+      .theme-toggle-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+      }
+
+      .theme-toggle-btn:hover {
+        transform: translateY(-1px);
+      }
+
+      .theme-toggle-btn .theme-icon {
+        display: inline-flex;
+        animation: subtleFloat 2.8s ease-in-out infinite;
+      }
+
+      body.dark-mode {
+        background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
+        color: #e2e8f0;
+      }
+
+      body.dark-mode header {
+        background: rgba(15, 23, 42, 0.9);
+        border-color: rgba(148, 163, 184, 0.2);
+      }
+
+      body.dark-mode #mobileMenu {
+        background: rgba(15, 23, 42, 0.95);
+        border-color: rgba(148, 163, 184, 0.2);
+      }
+
+      body.dark-mode main section,
+      body.dark-mode #pricing,
+      body.dark-mode #manualInstructions {
+        background: rgba(30, 41, 59, 0.92);
+        border-color: rgba(148, 163, 184, 0.25);
+        color: #e2e8f0;
+      }
+
+      body.dark-mode .text-slate-600,
+      body.dark-mode .text-slate-700,
+      body.dark-mode .text-aqua-700,
+      body.dark-mode .text-aqua-800,
+      body.dark-mode .text-aqua-900 {
+        color: #e2e8f0 !important;
+      }
+
+      body.dark-mode .bg-aqua-50,
+      body.dark-mode .bg-aqua-100 {
+        background: rgba(15, 23, 42, 0.85) !important;
+      }
+
+      body.dark-mode input,
+      body.dark-mode select,
+      body.dark-mode #manualInstructions {
+        background: #0f172a;
+        color: #e2e8f0;
+        border-color: rgba(148, 163, 184, 0.3);
+      }
+
+      body.dark-mode input::placeholder {
+        color: #94a3b8;
+      }
+
+      body.dark-mode footer {
+        background: rgba(15, 23, 42, 0.85);
+        border-color: rgba(148, 163, 184, 0.2);
+        color: #93c5fd;
+      }
+
+      body.dark-mode button {
+        filter: saturate(0.82) brightness(0.95);
+      }
+
+      body.dark-mode button:hover {
+        filter: saturate(0.9) brightness(1);
+      }
+
+      @media (max-width: 767px) {
+        #mobileMenu nav {
+          gap: 0.6rem;
+        }
+
+        #mobileMenu .mobile-nav-link,
+        #mobileMenu button,
+        #mobileMenu a {
+          padding-top: 0.7rem;
+          padding-bottom: 0.7rem;
+        }
+
+        #themeToggle {
+          margin-left: auto;
+          margin-right: 0.5rem;
+        }
+      }
+    </style>
+  </head>
+  <body class="min-h-screen scroll-smooth bg-gradient-to-b from-aqua-200 via-aqua-100 to-white text-slate-700 selection:bg-aqua-300/60">
+    <header class="sticky top-0 z-40 border-b border-white/50 bg-white/85 backdrop-blur-lg">
+      <div class="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-3">
+        <a href="#home" class="group flex items-center gap-3">
+          <div class="h-10 w-10 rounded-xl bg-gradient-to-br from-aqua-500 to-aqua-700 shadow-soft"></div>
+          <div>
+            <h1 class="text-base font-bold text-aqua-900 sm:text-lg">Aqualine Water Billing Company</h1>
+            <p class="text-xs text-aqua-700">Automatic Water Token Billing</p>
+          </div>
+        </a>
+        <nav class="hidden flex-wrap items-center gap-4 text-sm font-semibold text-aqua-800 md:flex">
+          <a class="transition hover:text-aqua-600" href="#home">Home</a>
+          <a class="transition hover:text-aqua-600" href="#register">Register</a>
+          <a class="transition hover:text-aqua-600" href="#pay">Pay via MPESA</a>
+          <a class="transition hover:text-aqua-600" href="#about">About Us</a>
+          <a class="transition hover:text-aqua-600" href="#contact">Contacts</a>
+          <a class="rounded-lg bg-aqua-700 px-3 py-1.5 text-white transition hover:bg-aqua-600" href="/admin.html">Admin Login</a>
+        </nav>
+        <button
+          id="themeToggle"
+          class="theme-toggle-btn rounded-lg border border-aqua-300 bg-aqua-50 px-3 py-2 text-xs font-semibold text-aqua-800 transition hover:bg-aqua-100"
+          type="button"
+          aria-label="Toggle dark mode"
+        >
+          <span class="theme-icon" aria-hidden="true">🌙</span><span class="theme-label">Dark Mode</span>
+        </button>
+        <button
+          id="mobileMenuButton"
+          class="inline-flex items-center justify-center rounded-lg border border-aqua-300 bg-aqua-50 p-2 text-aqua-800 transition hover:bg-aqua-100 md:hidden"
+          aria-label="Open navigation menu"
+          aria-expanded="false"
+          aria-controls="mobileMenu"
+          type="button"
+        >
+          <svg id="menuIconOpen" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+          <svg id="menuIconClose" xmlns="http://www.w3.org/2000/svg" class="hidden h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div id="mobileMenu" class="hidden border-t border-aqua-100 bg-white/95 px-4 py-3 md:hidden">
+        <nav class="grid gap-2 text-sm font-semibold text-aqua-800">
+          <a class="mobile-nav-link rounded-lg px-3 py-2 transition hover:bg-aqua-50" href="#home">Home</a>
+          <a class="mobile-nav-link rounded-lg px-3 py-2 transition hover:bg-aqua-50" href="#register">Register</a>
+          <a class="mobile-nav-link rounded-lg px-3 py-2 transition hover:bg-aqua-50" href="#pay">Pay via MPESA</a>
+          <a class="mobile-nav-link rounded-lg px-3 py-2 transition hover:bg-aqua-50" href="#about">About Us</a>
+          <a class="mobile-nav-link rounded-lg px-3 py-2 transition hover:bg-aqua-50" href="#contact">Contacts</a>
+          <a class="rounded-lg bg-aqua-700 px-3 py-2 text-center text-white transition hover:bg-aqua-600" href="/admin.html">Admin Login</a>
+          <button id="themeToggleMobile" class="theme-toggle-btn rounded-lg border border-aqua-300 bg-aqua-50 px-3 py-2 text-aqua-800 transition hover:bg-aqua-100" type="button">
+            <span class="theme-icon" aria-hidden="true">🌙</span><span class="theme-label">Dark Mode</span>
+          </button>
+        </nav>
+      </div>
+    </header>
+
+    <main class="mx-auto grid w-full max-w-6xl gap-6 px-4 py-8">
+      <section
+        id="home"
+        class="relative overflow-hidden rounded-3xl border border-white/60 bg-white/90 p-6 shadow-soft md:p-8"
+      >
+        <div class="absolute -right-12 -top-12 h-36 w-36 animate-floatSlow rounded-full bg-aqua-300/40 blur-2xl"></div>
+        <div class="absolute -bottom-12 -left-12 h-40 w-40 rounded-full bg-aqua-200/60 blur-2xl"></div>
+        <div class="relative space-y-4">
+          <span class="inline-block rounded-full bg-aqua-100 px-3 py-1 text-xs font-bold text-aqua-700">Remote Token Payments</span>
+          <h2 class="text-2xl font-black text-aqua-900 md:text-4xl">Automatic Water Billing (Token-Based)</h2>
+          <p class="max-w-3xl text-sm text-slate-600 md:text-base">
+            Customers buy water tokens remotely via MPESA and receive token details directly on their phone.
+            Billing supports both per litre and per 1000 litres.
+          </p>
+          <div id="pricing" class="rounded-xl border border-aqua-200 bg-aqua-50 px-4 py-3 font-bold text-aqua-800"></div>
+        </div>
+      </section>
+
+      <section id="register" class="rounded-3xl border border-white/70 bg-white/90 p-6 shadow-soft md:p-8">
+        <div class="mb-5 flex items-center justify-between">
+          <h2 class="text-xl font-bold text-aqua-900 md:text-2xl">Customer Registration</h2>
+          <span class="rounded-lg bg-aqua-100 px-3 py-1 text-xs font-semibold text-aqua-700">Fast Onboarding</span>
+        </div>
+        <form id="registerForm" class="grid gap-4 md:grid-cols-2">
+          <label class="space-y-2 text-sm font-semibold text-aqua-800">
+            Full Name
+            <input
+              class="w-full rounded-xl border border-aqua-200 bg-white px-4 py-3 outline-none transition focus:border-aqua-500 focus:ring-4 focus:ring-aqua-200"
+              type="text"
+              name="fullName"
+              required
+            />
+          </label>
+          <label class="space-y-2 text-sm font-semibold text-aqua-800">
+            Phone Number
+            <input
+              class="w-full rounded-xl border border-aqua-200 bg-white px-4 py-3 outline-none transition focus:border-aqua-500 focus:ring-4 focus:ring-aqua-200"
+              type="text"
+              name="phone"
+              placeholder="e.g 07XXXXXXXX"
+              required
+            />
+          </label>
+          <button
+            type="submit"
+            class="md:col-span-2 rounded-xl bg-gradient-to-r from-aqua-600 to-aqua-700 px-5 py-3 font-bold text-white shadow-soft transition hover:-translate-y-0.5 hover:from-aqua-500 hover:to-aqua-600"
+          >
+            Register Customer
+          </button>
+        </form>
+        <p id="registerResult" class="mt-4 min-h-6 text-sm font-semibold"></p>
+      </section>
+
+      <section id="pay" class="rounded-3xl border border-white/70 bg-white/90 p-6 shadow-soft md:p-8">
+        <div class="mb-5 flex items-center justify-between">
+          <h2 class="text-xl font-bold text-aqua-900 md:text-2xl">Pay via MPESA</h2>
+          <span class="rounded-lg bg-aqua-100 px-3 py-1 text-xs font-semibold text-aqua-700">Instant Token</span>
+        </div>
+        <form id="paymentForm" class="grid gap-4 md:grid-cols-3">
+          <label class="space-y-2 text-sm font-semibold text-aqua-800">
+            Phone Number
+            <input
+              class="w-full rounded-xl border border-aqua-200 bg-white px-4 py-3 outline-none transition focus:border-aqua-500 focus:ring-4 focus:ring-aqua-200"
+              type="text"
+              name="phone"
+              required
+            />
+          </label>
+          <label class="space-y-2 text-sm font-semibold text-aqua-800">
+            Amount (KES)
+            <input
+              class="w-full rounded-xl border border-aqua-200 bg-white px-4 py-3 outline-none transition focus:border-aqua-500 focus:ring-4 focus:ring-aqua-200"
+              type="number"
+              name="amount"
+              min="1"
+              required
+            />
+          </label>
+          <label class="space-y-2 text-sm font-semibold text-aqua-800">
+            Billing Mode
+            <select
+              class="w-full rounded-xl border border-aqua-200 bg-white px-4 py-3 outline-none transition focus:border-aqua-500 focus:ring-4 focus:ring-aqua-200"
+              name="unitType"
+              required
+            >
+              <option value="litre">Per Litre</option>
+              <option value="1000_litre">Per 1000 Litres</option>
+            </select>
+          </label>
+          <button
+            type="submit"
+            class="md:col-span-3 rounded-xl bg-gradient-to-r from-aqua-600 to-aqua-700 px-5 py-3 font-bold text-white shadow-soft transition hover:-translate-y-0.5 hover:from-aqua-500 hover:to-aqua-600"
+          >
+            Pay and Generate Token
+          </button>
+        </form>
+        <p id="paymentResult" class="mt-4 min-h-6 text-sm font-semibold"></p>
+      </section>
+
+      <section id="manualPay" class="rounded-3xl border border-white/70 bg-white/90 p-6 shadow-soft md:p-8">
+        <div class="mb-5 flex items-center justify-between">
+          <h2 class="text-xl font-bold text-aqua-900 md:text-2xl">Manual MPESA Bridge (Temporary)</h2>
+          <span class="rounded-lg bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">Admin Verification</span>
+        </div>
+        <p id="manualInstructions" class="rounded-xl border border-aqua-200 bg-aqua-50 px-4 py-3 text-sm text-slate-700">
+          Loading payment instructions...
+        </p>
+        <form id="manualPaymentForm" class="mt-4 grid gap-4 md:grid-cols-4">
+          <label class="space-y-2 text-sm font-semibold text-aqua-800">
+            Phone Number
+            <input
+              class="w-full rounded-xl border border-aqua-200 bg-white px-4 py-3 outline-none transition focus:border-aqua-500 focus:ring-4 focus:ring-aqua-200"
+              type="text"
+              name="phone"
+              required
+            />
+          </label>
+          <label class="space-y-2 text-sm font-semibold text-aqua-800">
+            Amount (KES)
+            <input
+              class="w-full rounded-xl border border-aqua-200 bg-white px-4 py-3 outline-none transition focus:border-aqua-500 focus:ring-4 focus:ring-aqua-200"
+              type="number"
+              name="amount"
+              min="1"
+              required
+            />
+          </label>
+          <label class="space-y-2 text-sm font-semibold text-aqua-800">
+            Billing Mode
+            <select
+              class="w-full rounded-xl border border-aqua-200 bg-white px-4 py-3 outline-none transition focus:border-aqua-500 focus:ring-4 focus:ring-aqua-200"
+              name="unitType"
+              required
+            >
+              <option value="litre">Per Litre</option>
+              <option value="1000_litre">Per 1000 Litres</option>
+            </select>
+          </label>
+          <label class="space-y-2 text-sm font-semibold text-aqua-800">
+            MPESA Receipt Code
+            <input
+              class="w-full rounded-xl border border-aqua-200 bg-white px-4 py-3 uppercase outline-none transition focus:border-aqua-500 focus:ring-4 focus:ring-aqua-200"
+              type="text"
+              name="mpesaReceipt"
+              placeholder="e.g. RKT8BRIDGE01"
+              required
+            />
+          </label>
+          <button
+            type="submit"
+            class="md:col-span-4 rounded-xl border border-aqua-300 bg-white px-5 py-3 font-bold text-aqua-800 shadow-soft transition hover:-translate-y-0.5 hover:bg-aqua-50"
+          >
+            Submit Manual Payment for Verification
+          </button>
+        </form>
+        <p id="manualPaymentResult" class="mt-4 min-h-6 text-sm font-semibold"></p>
+      </section>
+
+      <section id="about" class="rounded-3xl border border-white/70 bg-white/90 p-6 shadow-soft md:p-8">
+        <h2 class="mb-3 text-xl font-bold text-aqua-900 md:text-2xl">About Us</h2>
+        <p class="leading-relaxed text-slate-600">
+          Aqualine Water Billing Company provides a simple tokenized billing system for water access.
+          Customers register once, pay remotely through MPESA, and instantly receive token details for the
+          amount of water purchased.
+        </p>
+      </section>
+
+      <section id="contact" class="rounded-3xl border border-white/70 bg-white/90 p-6 shadow-soft md:p-8">
+        <h2 class="mb-3 text-xl font-bold text-aqua-900 md:text-2xl">Contacts</h2>
+        <div class="grid gap-2 text-slate-600">
+          <p><span class="font-semibold text-aqua-900">Email:</span> aqualinesupport@gmail.com</p>
+          <p><span class="font-semibold text-aqua-900">Phone:</span> +254 700 000 000</p>
+          <p><span class="font-semibold text-aqua-900">Location:</span> Nairobi, Kenya</p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="border-t border-white/60 bg-white/80 py-5 text-center text-sm font-semibold text-aqua-700">
+      © 2026 Aqualine Water Billing Company
+    </footer>
+
+    <div id="toast" class="pointer-events-none fixed right-4 top-20 z-50 translate-y-2 rounded-xl bg-slate-900/90 px-4 py-3 text-sm font-medium text-white opacity-0 shadow-soft transition-all duration-300"></div>
+
+    <script>
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              entry.target.classList.remove('opacity-0', 'translate-y-4');
+              entry.target.classList.add('animate-fadeUp');
+            }
+          });
+        },
+        { threshold: 0.08 }
+      );
+
+      window.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('main section').forEach((section) => {
+          section.classList.add('opacity-0', 'translate-y-4', 'transition-all', 'duration-500');
+          observer.observe(section);
+        });
+      });
+    </script>
+
+    <script src="customer.js"></script>
+  </body>
+</html>

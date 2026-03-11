@@ -1,0 +1,14 @@
+{
+  "name": "aqualine-water-billing",
+  "version": "1.0.0",
+  "description": "Aqualine Water Billing Company web system",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  }
+}
