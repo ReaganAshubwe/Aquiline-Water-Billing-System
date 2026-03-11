@@ -46,10 +46,26 @@ cp data/db.seed.json data/db.json
 npm start
 ```
 
-### 3) Open in browser
+### 4) Open in browser
 
 - Customer UI: http://localhost:3000
 - Admin UI: http://localhost:3000/admin.html
+
+## Screenshots
+
+Place your screenshots in `docs/screenshots/` using the filenames below.
+
+### Homepage
+
+![Homepage](docs/screenshots/homepage.png)
+
+### Admin Page
+
+![Admin Page](docs/screenshots/admin-page.png)
+
+### MPESA Push Notification Page
+
+![MPESA Push Notification Page](docs/screenshots/mpesa-push-page.png)
 
 ## Admin Access
 
@@ -82,6 +98,33 @@ Set these for live MPESA processing:
 Callback endpoint:
 
 - `/api/payments/mpesa/callback`
+
+### ngrok for Local Development and GitHub Clones
+
+If you are testing MPESA locally, Daraja needs a public HTTPS callback URL. That is where ngrok is used.
+
+Important:
+
+- ngrok is only for local development and testing.
+- Do not commit your personal ngrok URL or auth token to GitHub.
+- Every developer who clones this repository can use their own ngrok account and their own local `.env` file.
+
+Typical local setup:
+
+```bash
+ngrok config add-authtoken YOUR_NGROK_TOKEN
+ngrok http 3000
+```
+
+Then copy the HTTPS forwarding URL and set:
+
+```env
+MPESA_CALLBACK_URL=https://your-ngrok-url/api/payments/mpesa/callback
+```
+
+After updating `.env`, restart the app.
+
+If the app is deployed to a real public server, ngrok is no longer needed. Use your deployed HTTPS domain instead.
 
 ### SMS (Africa's Talking)
 
