@@ -261,6 +261,18 @@
             Show Registered Customers
           </button>
           <button
+            id="loadRecentTransactions"
+            class="rounded-xl border border-aqua-300 bg-aqua-50 px-4 py-2.5 font-semibold text-aqua-800 transition hover:-translate-y-0.5 hover:bg-aqua-100"
+          >
+            Recent Transactions
+          </button>
+          <button
+            id="refreshFinance"
+            class="rounded-xl border border-aqua-300 bg-aqua-50 px-4 py-2.5 font-semibold text-aqua-800 transition hover:-translate-y-0.5 hover:bg-aqua-100"
+          >
+            Refresh Finance
+          </button>
+          <button
             id="removeInactive"
             class="rounded-xl bg-gradient-to-r from-slate-700 to-slate-800 px-4 py-2.5 font-semibold text-white transition hover:-translate-y-0.5 hover:from-slate-600 hover:to-slate-700"
           >
@@ -274,6 +286,142 @@
           </button>
         </div>
         <p id="adminResult" class="mb-4 min-h-6 text-sm font-semibold"></p>
+
+        <h3 class="mb-3 mt-6 text-lg font-bold text-aqua-900">Settlement & Treasury</h3>
+        <div class="mb-4 grid gap-3 md:grid-cols-3">
+          <div class="rounded-2xl border border-aqua-200 bg-aqua-50 p-4">
+            <p class="text-xs font-semibold uppercase tracking-wide text-aqua-700">Collections</p>
+            <p id="balanceCollections" class="mt-1 text-lg font-bold text-aqua-900">KES 0</p>
+          </div>
+          <div class="rounded-2xl border border-aqua-200 bg-aqua-50 p-4">
+            <p class="text-xs font-semibold uppercase tracking-wide text-aqua-700">Operations</p>
+            <p id="balanceOperations" class="mt-1 text-lg font-bold text-aqua-900">KES 0</p>
+          </div>
+          <div class="rounded-2xl border border-aqua-200 bg-aqua-50 p-4">
+            <p class="text-xs font-semibold uppercase tracking-wide text-aqua-700">Savings</p>
+            <p id="balanceSavings" class="mt-1 text-lg font-bold text-aqua-900">KES 0</p>
+          </div>
+        </div>
+
+        <div class="mb-4 rounded-2xl border border-aqua-200 bg-white p-4">
+          <p class="text-sm font-semibold text-aqua-800">Policy</p>
+          <p id="financePolicyText" class="mt-1 text-sm text-slate-600">Settlement policy not loaded.</p>
+          <p id="financeMetaText" class="mt-1 text-xs text-slate-500">-</p>
+        </div>
+
+        <div class="mb-4 grid gap-3 md:grid-cols-3">
+          <button
+            id="settleUnsettled"
+            class="rounded-xl border border-aqua-300 bg-aqua-50 px-4 py-2.5 text-sm font-semibold text-aqua-800 transition hover:-translate-y-0.5 hover:bg-aqua-100"
+          >
+            Settle Unsettled Paid Transactions
+          </button>
+          <button
+            id="topupOperations"
+            class="rounded-xl border border-aqua-300 bg-aqua-50 px-4 py-2.5 text-sm font-semibold text-aqua-800 transition hover:-translate-y-0.5 hover:bg-aqua-100"
+          >
+            Top Up Operations from Collections
+          </button>
+          <button
+            id="loadRefunds"
+            class="rounded-xl border border-aqua-300 bg-aqua-50 px-4 py-2.5 text-sm font-semibold text-aqua-800 transition hover:-translate-y-0.5 hover:bg-aqua-100"
+          >
+            Load Refunds
+          </button>
+        </div>
+
+        <div class="mb-4 grid gap-3 md:grid-cols-2">
+          <button
+            id="loadLedger"
+            class="rounded-xl border border-aqua-300 bg-aqua-50 px-4 py-2.5 text-sm font-semibold text-aqua-800 transition hover:-translate-y-0.5 hover:bg-aqua-100"
+          >
+            Load Ledger
+          </button>
+          <button
+            id="loadPendingRefundApprovals"
+            class="rounded-xl border border-aqua-300 bg-aqua-50 px-4 py-2.5 text-sm font-semibold text-aqua-800 transition hover:-translate-y-0.5 hover:bg-aqua-100"
+          >
+            Load Pending Refund Approvals
+          </button>
+        </div>
+
+        <h4 class="mb-3 mt-5 text-base font-bold text-aqua-900">Recent Settlements</h4>
+        <div class="overflow-hidden rounded-2xl border border-aqua-200">
+          <div class="overflow-x-auto">
+            <table id="settlementsTable" class="min-w-full border-collapse bg-white text-sm">
+              <thead class="bg-aqua-50 text-aqua-800">
+                <tr>
+                  <th class="px-4 py-3 text-left font-semibold">Payment ID</th>
+                  <th class="px-4 py-3 text-left font-semibold">Total</th>
+                  <th class="px-4 py-3 text-left font-semibold">Savings</th>
+                  <th class="px-4 py-3 text-left font-semibold">Operations</th>
+                  <th class="px-4 py-3 text-left font-semibold">Date</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-aqua-100"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <h4 class="mb-3 mt-6 text-base font-bold text-aqua-900">Recent Refunds</h4>
+        <div class="overflow-hidden rounded-2xl border border-aqua-200">
+          <div class="overflow-x-auto">
+            <table id="refundsTable" class="min-w-full border-collapse bg-white text-sm">
+              <thead class="bg-aqua-50 text-aqua-800">
+                <tr>
+                  <th class="px-4 py-3 text-left font-semibold">Customer</th>
+                  <th class="px-4 py-3 text-left font-semibold">Payment ID</th>
+                  <th class="px-4 py-3 text-left font-semibold">Amount</th>
+                  <th class="px-4 py-3 text-left font-semibold">Status</th>
+                  <th class="px-4 py-3 text-left font-semibold">Reason</th>
+                  <th class="px-4 py-3 text-left font-semibold">Date</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-aqua-100"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <h4 class="mb-3 mt-6 text-base font-bold text-aqua-900">Pending Refund Approvals</h4>
+        <div class="overflow-hidden rounded-2xl border border-aqua-200">
+          <div class="overflow-x-auto">
+            <table id="pendingRefundApprovalsTable" class="min-w-full border-collapse bg-white text-sm">
+              <thead class="bg-aqua-50 text-aqua-800">
+                <tr>
+                  <th class="px-4 py-3 text-left font-semibold">Customer</th>
+                  <th class="px-4 py-3 text-left font-semibold">Payment ID</th>
+                  <th class="px-4 py-3 text-left font-semibold">Amount</th>
+                  <th class="px-4 py-3 text-left font-semibold">Requested By</th>
+                  <th class="px-4 py-3 text-left font-semibold">Reason</th>
+                  <th class="px-4 py-3 text-left font-semibold">Date</th>
+                  <th class="px-4 py-3 text-left font-semibold">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-aqua-100"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <h4 class="mb-3 mt-6 text-base font-bold text-aqua-900">Ledger Entries</h4>
+        <div class="overflow-hidden rounded-2xl border border-aqua-200">
+          <div class="overflow-x-auto">
+            <table id="ledgerTable" class="min-w-full border-collapse bg-white text-sm">
+              <thead class="bg-aqua-50 text-aqua-800">
+                <tr>
+                  <th class="px-4 py-3 text-left font-semibold">Type</th>
+                  <th class="px-4 py-3 text-left font-semibold">Account</th>
+                  <th class="px-4 py-3 text-left font-semibold">Direction</th>
+                  <th class="px-4 py-3 text-left font-semibold">Amount</th>
+                  <th class="px-4 py-3 text-left font-semibold">Reference</th>
+                  <th class="px-4 py-3 text-left font-semibold">Note</th>
+                  <th class="px-4 py-3 text-left font-semibold">Date</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-aqua-100"></tbody>
+            </table>
+          </div>
+        </div>
+
         <div class="overflow-hidden rounded-2xl border border-aqua-200">
           <div class="overflow-x-auto">
             <table id="customersTable" class="min-w-full border-collapse bg-white text-sm">
@@ -284,6 +432,35 @@
                   <th class="px-4 py-3 text-left font-semibold">Transactions</th>
                   <th class="px-4 py-3 text-left font-semibold">Total Spent</th>
                   <th class="px-4 py-3 text-left font-semibold">Last Activity</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-aqua-100"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <h3 class="mb-3 mt-6 text-lg font-bold text-aqua-900">Recent Transactions</h3>
+        <div class="mb-3">
+          <button
+            id="loadRecentTransactionsTable"
+            class="rounded-xl border border-aqua-300 bg-aqua-50 px-4 py-2.5 text-sm font-semibold text-aqua-800 transition hover:-translate-y-0.5 hover:bg-aqua-100"
+          >
+            Load Recent Transactions
+          </button>
+        </div>
+        <div class="overflow-hidden rounded-2xl border border-aqua-200">
+          <div class="overflow-x-auto">
+            <table id="recentTransactionsTable" class="min-w-full border-collapse bg-white text-sm">
+              <thead class="bg-aqua-50 text-aqua-800">
+                <tr>
+                  <th class="px-4 py-3 text-left font-semibold">Customer</th>
+                  <th class="px-4 py-3 text-left font-semibold">Phone</th>
+                  <th class="px-4 py-3 text-left font-semibold">Amount</th>
+                  <th class="px-4 py-3 text-left font-semibold">Status</th>
+                  <th class="px-4 py-3 text-left font-semibold">Channel</th>
+                  <th class="px-4 py-3 text-left font-semibold">Receipt / Token</th>
+                  <th class="px-4 py-3 text-left font-semibold">Date</th>
+                  <th class="px-4 py-3 text-left font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-aqua-100"></tbody>
