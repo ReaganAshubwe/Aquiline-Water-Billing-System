@@ -38,25 +38,45 @@ Web-based water billing system with customer registration, MPESA payment process
 
 ## Quick Start
 
-### 1) Install dependencies
+### 0) Prerequisites
+
+- Node.js 18+ and npm
+- Git
+
+### 1) Clone the repository
+
+```bash
+git clone https://github.com/ReaganAshubwe/Aquiline-Water-Billing-System.git
+cd awbc
+```
+
+### 2) Install dependencies
 
 ```bash
 npm install
 ```
 
-### 2) Initialize local database (first run)
+### 3) Initialize local database (first run)
 
 ```bash
 cp data/db.seed.json data/db.json
 ```
 
-### 3) Start the app
+### 4) Create local environment file (optional but recommended)
+
+```bash
+cp .env.example .env
+```
+
+If you skip this step, the app still runs with built-in defaults and simulation mode.
+
+### 5) Start the app
 
 ```bash
 npm start
 ```
 
-### 4) Open in browser
+### 6) Open in browser
 
 - Customer UI: http://localhost:3000
 - Admin UI: http://localhost:3000/admin.html
