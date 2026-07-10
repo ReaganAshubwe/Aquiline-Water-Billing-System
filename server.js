@@ -44,6 +44,17 @@ const AUTO_SETTLEMENT_HOUR_UTC = Math.min(
 );
 
 app.use(express.json());
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', process.env.CORS_ORIGIN || '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-admin-key, x-admin-actor, x-approver-key, Authorization');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+
+  next();
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 function extractBearerToken(authorization) {
@@ -103,6 +114,14 @@ function getActor(req, fallback = 'admin') {
 
 function roundCurrency(value) {
   return Math.round(Number(value || 0) * 100) / 100;
+}
+
+function escapeCsv(value) {
+  const text = String(value ?? '');
+  if (/[",\n\r]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
 }
 
 function asPositiveNumber(value) {
@@ -1247,6 +1266,57 @@ app.get('/api/admin/customers', (req, res) => {
   });
 
   res.json({ customers: withSpend });
+});
+
+app.delete('/api/admin/customers/:customerId', (req, res) => {
+  const { customerId } = req.params;
+  const db = readDb();
+  const customerIndex = db.customers.findIndex((customer) => customer.id === customerId);
+
+  if (customerIndex === -1) {
+    return res.status(404).json({ error: 'Customer not found' });
+  }
+
+  const [removedCustomer] = db.customers.splice(customerIndex, 1);
+  const removedPayments = db.payments.filter((payment) => payment.customerId === customerId);
+  db.payments = db.payments.filter((payment) => payment.customerId !== customerId);
+  writeDb(db);
+
+  res.json({
+    message: `Deleted ${removedCustomer.fullName || 'customer'} and ${removedPayments.length} related payment(s).`,
+    removedCustomer,
+    removedPaymentCount: removedPayments.length
+  });
+});
+
+app.get('/api/admin/customers/report', (req, res) => {
+  const db = readDb();
+  const generatedAt = nowIso();
+  const rows = db.customers.map((customer) => {
+    const customerPayments = db.payments.filter((payment) => payment.customerId === customer.id);
+    const totalSpent = customerPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    return [
+      customer.id,
+      customer.fullName || '',
+      customer.phone || '',
+      customerPayments.length,
+      roundCurrency(totalSpent).toFixed(2),
+      customer.createdAt || '',
+      customer.lastActivityAt || ''
+    ];
+  });
+
+  const csvLines = [
+    ['Generated At', generatedAt].map(escapeCsv).join(','),
+    ['Customer ID', 'Full Name', 'Phone', 'Transaction Count', 'Total Spent', 'Created At', 'Last Activity At']
+      .map(escapeCsv)
+      .join(','),
+    ...rows.map((row) => row.map(escapeCsv).join(','))
+  ];
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="customers-report.csv"');
+  res.send(csvLines.join('\n'));
 });
 
 app.delete('/api/admin/customers/inactive', (req, res) => {

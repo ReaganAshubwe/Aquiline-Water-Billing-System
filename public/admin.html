@@ -158,6 +158,7 @@
         }
       }
     </style>
+    <script src="/app-config.js"></script>
   </head>
   <body class="min-h-screen scroll-smooth bg-gradient-to-b from-aqua-200 via-aqua-100 to-white text-slate-700">
     <header class="border-b border-white/50 bg-white/85 backdrop-blur-lg">
@@ -255,12 +256,6 @@
             Refresh Status
           </button>
           <button
-            id="loadCustomers"
-            class="rounded-xl border border-aqua-300 bg-aqua-50 px-4 py-2.5 font-semibold text-aqua-800 transition hover:-translate-y-0.5 hover:bg-aqua-100"
-          >
-            Show Registered Customers
-          </button>
-          <button
             id="loadRecentTransactions"
             class="rounded-xl border border-aqua-300 bg-aqua-50 px-4 py-2.5 font-semibold text-aqua-800 transition hover:-translate-y-0.5 hover:bg-aqua-100"
           >
@@ -277,12 +272,6 @@
             class="rounded-xl bg-gradient-to-r from-slate-700 to-slate-800 px-4 py-2.5 font-semibold text-white transition hover:-translate-y-0.5 hover:from-slate-600 hover:to-slate-700"
           >
             Dissolve Inactive (2+ years)
-          </button>
-          <button
-            id="logoutButton"
-            class="rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 font-semibold text-red-700 transition hover:-translate-y-0.5 hover:bg-red-100"
-          >
-            Logout
           </button>
         </div>
         <p id="adminResult" class="mb-4 min-h-6 text-sm font-semibold"></p>
@@ -422,6 +411,20 @@
           </div>
         </div>
 
+        <div class="mb-3 flex flex-wrap gap-3">
+          <button
+            id="loadCustomers"
+            class="rounded-xl border border-aqua-300 bg-aqua-50 px-4 py-2.5 text-sm font-semibold text-aqua-800 transition hover:-translate-y-0.5 hover:bg-aqua-100"
+          >
+            Show Registered Customers
+          </button>
+          <button
+            id="sendCustomersReport"
+            class="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 transition hover:-translate-y-0.5 hover:bg-emerald-100"
+          >
+            Send Customers Report
+          </button>
+        </div>
         <div class="overflow-hidden rounded-2xl border border-aqua-200">
           <div class="overflow-x-auto">
             <table id="customersTable" class="min-w-full border-collapse bg-white text-sm">
@@ -432,6 +435,7 @@
                   <th class="px-4 py-3 text-left font-semibold">Transactions</th>
                   <th class="px-4 py-3 text-left font-semibold">Total Spent</th>
                   <th class="px-4 py-3 text-left font-semibold">Last Activity</th>
+                  <th class="px-4 py-3 text-left font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-aqua-100"></tbody>
@@ -494,6 +498,14 @@
             </table>
           </div>
         </div>
+
+        <div class="mt-6 flex justify-end">
+          <button
+            id="logoutButton"
+            class="rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 font-semibold text-red-700 transition hover:-translate-y-0.5 hover:bg-red-100"
+          >
+            Logout
+          </button>
         </div>
       </section>
     </main>

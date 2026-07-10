@@ -140,16 +140,34 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function buildAdminHeaders(extraHeaders = {}) {
+  return {
+    'Content-Type': 'application/json',
+    'x-admin-key': adminKey,
+    'x-admin-actor': adminActor,
+    ...(approverKey ? { 'x-approver-key': approverKey } : {}),
+    ...extraHeaders
+  };
+}
+
+function downloadTextFile(filename, content, mimeType = 'text/plain;charset=utf-8') {
+  const blob = new Blob([content], { type: mimeType });
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
 async function adminApi(path, options = {}) {
-  const customHeaders = options.headers || {};
-  const response = await fetch(path, {
-    headers: {
-      'Content-Type': 'application/json',
-      'x-admin-key': adminKey,
-      'x-admin-actor': adminActor,
-      ...(approverKey ? { 'x-approver-key': approverKey } : {}),
-      ...customHeaders
-    },
+  const apiBaseUrl = window.APP_CONFIG?.apiBaseUrl || '';
+  const requestUrl = apiBaseUrl ? new URL(path, apiBaseUrl).toString() : path;
+
+  const response = await fetch(requestUrl, {
+    headers: buildAdminHeaders(options.headers || {}),
     ...options
   });
 
@@ -426,6 +444,14 @@ async function loadCustomers() {
   const tbody = document.querySelector('#customersTable tbody');
   tbody.innerHTML = '';
 
+  if (!result.customers.length) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td class="px-4 py-4 text-slate-500" colspan="6">No customers found.</td>';
+    tbody.appendChild(tr);
+    setText('adminResult', 'No customers found.');
+    return;
+  }
+
   for (const customer of result.customers) {
     const tr = document.createElement('tr');
     tr.className = 'transition hover:bg-aqua-50/70';
@@ -435,12 +461,43 @@ async function loadCustomers() {
       <td class="px-4 py-3 text-slate-600">${customer.transactionCount}</td>
       <td class="px-4 py-3 text-slate-600">KES ${customer.totalSpent}</td>
       <td class="px-4 py-3 text-slate-600">${formatDate(customer.lastActivityAt)}</td>
+      <td class="px-4 py-3">
+        <button
+          data-action="delete-customer"
+          data-id="${escapeHtml(customer.id)}"
+          data-name="${escapeHtml(customer.fullName)}"
+          class="rounded-lg border border-red-300 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-100"
+        >
+          Delete
+        </button>
+      </td>
     `;
     tbody.appendChild(tr);
   }
 
   setText('adminResult', `Loaded ${result.customers.length} customer(s).`);
   showToast('Customers loaded');
+}
+
+async function deleteCustomer(customerId) {
+  return adminApi(`/api/admin/customers/${customerId}`, { method: 'DELETE' });
+}
+
+async function sendCustomersReport() {
+  const apiBaseUrl = window.APP_CONFIG?.apiBaseUrl || '';
+  const requestUrl = apiBaseUrl ? new URL('/api/admin/customers/report', apiBaseUrl).toString() : '/api/admin/customers/report';
+  const response = await fetch(requestUrl, {
+    method: 'GET',
+    headers: buildAdminHeaders()
+  });
+  const reportText = await response.text();
+
+  if (!response.ok) {
+    throw new Error(reportText || 'Request failed');
+  }
+
+  const dateStamp = new Date().toISOString().slice(0, 10);
+  downloadTextFile(`customers-report-${dateStamp}.csv`, reportText, 'text/csv;charset=utf-8');
 }
 
 const STATUS_CONFIG = {
@@ -548,14 +605,9 @@ async function approvePendingManualPayment(paymentId) {
 }
 
 async function rejectPendingManualPayment(paymentId) {
-  const reason = window.prompt('Reason for rejection:', 'Verification failed');
-  if (reason === null) {
-    return;
-  }
-
   await adminApi(`/api/admin/payments/${paymentId}/manual-reject`, {
     method: 'POST',
-    body: JSON.stringify({ reason: reason.trim() || 'Verification failed' })
+    body: JSON.stringify({ reason: 'Verification failed' })
   });
 
   showToast('Manual payment rejected');
@@ -576,10 +628,7 @@ document.getElementById('adminLoginForm').addEventListener('submit', async (even
     setButtonLoading(loginButton, true, 'Authenticating...');
     adminKey = enteredKey;
     await validateAdminKey();
-    const actorInput = window.prompt('Enter your admin actor name (for audit/maker-checker):', adminActor || 'admin');
-    if (actorInput !== null) {
-      adminActor = actorInput.trim() || 'admin';
-    }
+    adminActor = adminActor.trim() || 'admin';
     sessionStorage.setItem(ADMIN_KEY_STORAGE, enteredKey);
     sessionStorage.setItem(ADMIN_ACTOR_STORAGE, adminActor);
     setText('authResult', 'Authenticated successfully');
@@ -613,6 +662,48 @@ document.getElementById('loadCustomers').addEventListener('click', async () => {
     showToast(error.message, true);
   } finally {
     setButtonLoading(button, false);
+  }
+});
+
+document.getElementById('sendCustomersReport').addEventListener('click', async () => {
+  const button = document.getElementById('sendCustomersReport');
+  try {
+    setButtonLoading(button, true, 'Generating...');
+    await sendCustomersReport();
+    setText('adminResult', 'Customers report downloaded.');
+    showToast('Customers report generated');
+  } catch (error) {
+    setText('adminResult', error.message, true);
+    showToast(error.message, true);
+  } finally {
+    setButtonLoading(button, false);
+  }
+});
+
+document.querySelector('#customersTable tbody').addEventListener('click', async (event) => {
+  const actionButton = event.target.closest('button[data-action="delete-customer"]');
+  if (!actionButton) {
+    return;
+  }
+
+  const customerName = actionButton.dataset.name || 'this customer';
+  const customerId = actionButton.dataset.id;
+
+  if (!window.confirm(`Delete ${customerName} from the system? This will remove the customer record and related payments.`)) {
+    return;
+  }
+
+  try {
+    setButtonLoading(actionButton, true, 'Deleting...');
+    const result = await deleteCustomer(customerId);
+    setText('adminResult', result.message);
+    showToast(result.message);
+    await loadCustomers();
+  } catch (error) {
+    setText('adminResult', error.message, true);
+    showToast(error.message, true);
+  } finally {
+    setButtonLoading(actionButton, false);
   }
 });
 
