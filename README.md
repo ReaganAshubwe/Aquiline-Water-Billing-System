@@ -13,9 +13,19 @@ Web-based water billing system with customer registration, MPESA payment process
 - SMS token delivery:
   - Africa's Talking integration (optional)
   - Simulation mode fallback
+- Built-in treasury layer:
+  - Auto-settlement per confirmed payment (savings/operations split)
+  - Automatic daily settlement sweep for any paid-but-unsettled records
+  - Ledger entries for payment, settlement, top-up, and refund movements
+  - Operations-float management and manual top-ups from collections
+  - Refund tracking with partial/full refund state per payment
+  - Maker-checker refund workflow (request + separate approval)
 - Admin tools:
   - Customer list and spend/activity summary
   - Pending manual payment review
+  - Settlement balances and policy view
+  - Unsettled payment settlement trigger
+  - Refund issuing and refund history
   - Integration status visibility
   - Inactive account cleanup
 
@@ -28,25 +38,45 @@ Web-based water billing system with customer registration, MPESA payment process
 
 ## Quick Start
 
-### 1) Install dependencies
+### 0) Prerequisites
+
+- Node.js 18+ and npm
+- Git
+
+### 1) Clone the repository
+
+```bash
+git clone https://github.com/ReaganAshubwe/Aquiline-Water-Billing-System.git
+cd awbc
+```
+
+### 2) Install dependencies
 
 ```bash
 npm install
 ```
 
-### 2) Initialize local database (first run)
+### 3) Initialize local database (first run)
 
 ```bash
 cp data/db.seed.json data/db.json
 ```
 
-### 3) Start the app
+### 4) Create local environment file (optional but recommended)
+
+```bash
+cp .env.example .env
+```
+
+If you skip this step, the app still runs with built-in defaults and simulation mode.
+
+### 5) Start the app
 
 ```bash
 npm start
 ```
 
-### 4) Open in browser
+### 6) Open in browser
 
 - Customer UI: http://localhost:3000
 - Admin UI: http://localhost:3000/admin.html
@@ -136,6 +166,36 @@ Set these for live SMS sending:
 - `SMS_USERNAME`
 - `SMS_SENDER_ID` (optional)
 
+### Settlement Policy (Internal Buckets)
+
+Optional settings for treasury logic:
+
+- `SETTLEMENT_SAVINGS_PERCENT` (default: `70`)
+- `MIN_OPERATIONS_FLOAT` (default: `20000`)
+- `AUTO_SETTLEMENT_ENABLED` (default: `true`)
+- `AUTO_SETTLEMENT_HOUR_UTC` (default: `1`)
+- `APPROVER_KEY` (optional: dedicated key for refund approval)
+
+`operationsPercent` is computed as `100 - savingsPercent`.
+
+### Treasury Flow (Very Simple)
+
+1. Payment becomes `paid`.
+2. System splits it immediately:
+   - `SETTLEMENT_SAVINGS_PERCENT` goes to `savings`
+   - remainder goes to `operations`
+3. If a paid record somehow missed settlement, daily auto-sweep settles it at `AUTO_SETTLEMENT_HOUR_UTC`.
+4. Refunds are maker-checker:
+   - admin creates refund request (`pending_approval`)
+   - different approver approves request
+   - money is deducted from `operations`
+
+Example with defaults:
+
+- Payment `KES 1,000`
+- Savings `70%` -> `KES 700`
+- Operations `30%` -> `KES 300`
+
 ## Pricing Model
 
 - `KES 10` per litre
@@ -156,13 +216,31 @@ Litres are calculated using floor division based on selected unit type.
 
 ### Admin (requires admin key)
 
+Auth and status:
 - `GET /api/admin/auth-check`
 - `GET /api/admin/integration-status`
+
+Customers and payments:
 - `GET /api/admin/customers`
 - `GET /api/admin/payments`
+- `GET /api/admin/payments/recent`
 - `GET /api/admin/payments/pending-manual`
 - `POST /api/admin/payments/:paymentId/manual-approve`
 - `POST /api/admin/payments/:paymentId/manual-reject`
+
+Treasury and settlement:
+- `GET /api/admin/finance/overview`
+- `GET /api/admin/finance/ledger`
+- `POST /api/admin/finance/top-up-operations`
+- `POST /api/admin/finance/settle-unsettled-payments`
+
+Refunds (maker-checker):
+- `GET /api/admin/refunds`
+- `POST /api/admin/refunds` (create request)
+- `GET /api/admin/refunds/pending`
+- `POST /api/admin/refunds/:refundId/approve` (checker approves)
+
+Maintenance:
 - `DELETE /api/admin/customers/inactive?years=2`
 
 ## Data Storage
@@ -178,6 +256,13 @@ Tracked seed template:
 `data/db.json` is ignored by Git so local/runtime data is not committed.
 
 Best suited for local development and demos.
+
+Additional finance structures:
+
+- `finance` (balances + settlement policy)
+- `ledger` (immutable accounting events)
+- `settlements` (payment split records)
+- `refunds` (issued refund records)
 
 ## Notes
 

@@ -1,4 +1,20 @@
 {
   "customers": [],
-  "payments": []
+  "payments": [],
+  "settlements": [],
+  "refunds": [],
+  "ledger": [],
+  "finance": {
+    "policy": {
+      "savingsPercent": 70,
+      "operationsPercent": 30,
+      "minOperationsFloat": 20000,
+      "settlementMode": "per_payment"
+    },
+    "balances": {
+      "collections": 0,
+      "operations": 0,
+      "savings": 0
+    }
+  }
 }

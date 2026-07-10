@@ -1,5 +1,8 @@
 async function api(path, options = {}) {
-  const response = await fetch(path, {
+  const apiBaseUrl = window.APP_CONFIG?.apiBaseUrl || '';
+  const requestUrl = apiBaseUrl ? new URL(path, apiBaseUrl).toString() : path;
+
+  const response = await fetch(requestUrl, {
     headers: { 'Content-Type': 'application/json' },
     ...options
   });
