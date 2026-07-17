@@ -2,6 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const mysql = require('mysql2/promise');
 require('dotenv').config();
 
 const app = express();
@@ -25,6 +26,14 @@ const SMS_USERNAME = process.env.SMS_USERNAME || '';
 const SMS_SENDER_ID = process.env.SMS_SENDER_ID || '';
 
 const DB_PATH = path.join(__dirname, 'data', 'db.json');
+const DB_SEED_PATH = path.join(__dirname, 'data', 'db.seed.json');
+const MYSQL_TABLE_PREFIX = process.env.MYSQL_TABLE_PREFIX || 'awbc_';
+const MYSQL_CONNECTION_URL = process.env.MYSQL_URL || '';
+const MYSQL_HOST = process.env.MYSQL_HOST || 'localhost';
+const MYSQL_PORT = Number(process.env.MYSQL_PORT) || 3306;
+const MYSQL_USER = process.env.MYSQL_USER || '';
+const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD || '';
+const MYSQL_DATABASE = process.env.MYSQL_DATABASE || '';
 
 const PRICING = {
   perLitre: 10,
@@ -42,6 +51,21 @@ const AUTO_SETTLEMENT_HOUR_UTC = Math.min(
   Math.max(Number(process.env.AUTO_SETTLEMENT_HOUR_UTC) || 1, 0),
   23
 );
+
+let dbCache = null;
+let dbInitPromise = null;
+let mysqlPool = null;
+let persistTimer = null;
+let persistPromise = Promise.resolve();
+
+const MYSQL_TABLES = {
+  customers: `${MYSQL_TABLE_PREFIX}customers`,
+  payments: `${MYSQL_TABLE_PREFIX}payments`,
+  settlements: `${MYSQL_TABLE_PREFIX}settlements`,
+  refunds: `${MYSQL_TABLE_PREFIX}refunds`,
+  ledger: `${MYSQL_TABLE_PREFIX}ledger_entries`,
+  finance: `${MYSQL_TABLE_PREFIX}finance_state`
+};
 
 app.use(express.json());
 app.use((req, res, next) => {
@@ -89,14 +113,482 @@ function requireApprover(req, res, next) {
   next();
 }
 
+function loadSeedDb() {
+  const preferredPaths = [DB_SEED_PATH, DB_PATH];
+
+  for (const filePath of preferredPaths) {
+    if (!fs.existsSync(filePath)) {
+      continue;
+    }
+
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      return ensureDbSchema(JSON.parse(content));
+    } catch (error) {
+      console.warn(`Failed to load local database file at ${filePath}: ${error.message}`);
+    }
+  }
+
+  return ensureDbSchema({});
+}
+
+function hasMysqlConfig() {
+  return Boolean(MYSQL_CONNECTION_URL || (MYSQL_USER && MYSQL_DATABASE));
+}
+
+function createMysqlPool() {
+  if (MYSQL_CONNECTION_URL) {
+    return mysql.createPool({
+      uri: MYSQL_CONNECTION_URL,
+      waitForConnections: true,
+      connectionLimit: 5
+    });
+  }
+
+  return mysql.createPool({
+    host: MYSQL_HOST,
+    port: MYSQL_PORT,
+    user: MYSQL_USER,
+    password: MYSQL_PASSWORD,
+    database: MYSQL_DATABASE,
+    waitForConnections: true,
+    connectionLimit: 5,
+    charset: 'utf8mb4'
+  });
+}
+
+function mysqlJson(value) {
+  return JSON.stringify(value ?? null);
+}
+
+function mysqlParseJson(value, fallback) {
+  if (value === null || value === undefined || value === '') {
+    return fallback;
+  }
+
+  if (typeof value === 'object') {
+    return value;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
+async function ensureMysqlSchema() {
+  await mysqlPool.query(`
+    CREATE TABLE IF NOT EXISTS \`${MYSQL_TABLES.customers}\` (
+      id CHAR(36) NOT NULL PRIMARY KEY,
+      full_name VARCHAR(255) NOT NULL,
+      phone VARCHAR(32) NOT NULL UNIQUE,
+      created_at DATETIME(3) NOT NULL,
+      updated_at DATETIME(3) NOT NULL,
+      last_activity_at DATETIME(3) NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  await mysqlPool.query(`
+    CREATE TABLE IF NOT EXISTS \`${MYSQL_TABLES.payments}\` (
+      id CHAR(36) NOT NULL PRIMARY KEY,
+      customer_id CHAR(36) NOT NULL,
+      phone VARCHAR(32) NOT NULL,
+      amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+      unit_type VARCHAR(20) NOT NULL,
+      status VARCHAR(32) NOT NULL,
+      payment_channel VARCHAR(50) NOT NULL DEFAULT 'mpesa_stk',
+      checkout_request_id VARCHAR(100) DEFAULT NULL,
+      merchant_request_id VARCHAR(100) DEFAULT NULL,
+      mpesa_receipt VARCHAR(100) DEFAULT NULL,
+      mpesa_receipt_submitted VARCHAR(100) DEFAULT NULL,
+      token_code VARCHAR(32) DEFAULT NULL,
+      litres_bought INT NOT NULL DEFAULT 0,
+      refunded_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+      refund_status VARCHAR(20) NOT NULL DEFAULT 'none',
+      failure_reason TEXT DEFAULT NULL,
+      rejection_reason TEXT DEFAULT NULL,
+      settlement_id CHAR(36) DEFAULT NULL,
+      sms JSON DEFAULT NULL,
+      approved_at DATETIME(3) DEFAULT NULL,
+      created_at DATETIME(3) NOT NULL,
+      updated_at DATETIME(3) NOT NULL,
+      INDEX idx_payments_customer_id (customer_id),
+      INDEX idx_payments_status (status),
+      INDEX idx_payments_checkout_request_id (checkout_request_id),
+      CONSTRAINT fk_payments_customer FOREIGN KEY (customer_id) REFERENCES \`${MYSQL_TABLES.customers}\` (id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  await mysqlPool.query(`
+    CREATE TABLE IF NOT EXISTS \`${MYSQL_TABLES.settlements}\` (
+      id CHAR(36) NOT NULL PRIMARY KEY,
+      payment_id CHAR(36) NOT NULL,
+      customer_id CHAR(36) NOT NULL,
+      total_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+      savings_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+      operations_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+      status VARCHAR(32) NOT NULL,
+      created_at DATETIME(3) NOT NULL,
+      INDEX idx_settlements_payment_id (payment_id),
+      INDEX idx_settlements_customer_id (customer_id),
+      CONSTRAINT fk_settlements_payment FOREIGN KEY (payment_id) REFERENCES \`${MYSQL_TABLES.payments}\` (id) ON DELETE CASCADE,
+      CONSTRAINT fk_settlements_customer FOREIGN KEY (customer_id) REFERENCES \`${MYSQL_TABLES.customers}\` (id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  await mysqlPool.query(`
+    CREATE TABLE IF NOT EXISTS \`${MYSQL_TABLES.refunds}\` (
+      id CHAR(36) NOT NULL PRIMARY KEY,
+      payment_id CHAR(36) NOT NULL,
+      customer_id CHAR(36) NOT NULL,
+      amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+      reason TEXT NOT NULL,
+      status VARCHAR(32) NOT NULL,
+      requested_by VARCHAR(100) DEFAULT NULL,
+      approved_by VARCHAR(100) DEFAULT NULL,
+      approved_at DATETIME(3) DEFAULT NULL,
+      issued_refund_id CHAR(36) DEFAULT NULL,
+      created_by VARCHAR(100) DEFAULT NULL,
+      created_at DATETIME(3) NOT NULL,
+      updated_at DATETIME(3) NOT NULL,
+      INDEX idx_refunds_payment_id (payment_id),
+      INDEX idx_refunds_status (status),
+      CONSTRAINT fk_refunds_payment FOREIGN KEY (payment_id) REFERENCES \`${MYSQL_TABLES.payments}\` (id) ON DELETE CASCADE,
+      CONSTRAINT fk_refunds_customer FOREIGN KEY (customer_id) REFERENCES \`${MYSQL_TABLES.customers}\` (id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  await mysqlPool.query(`
+    CREATE TABLE IF NOT EXISTS \`${MYSQL_TABLES.ledger}\` (
+      id CHAR(36) NOT NULL PRIMARY KEY,
+      type VARCHAR(50) NOT NULL,
+      amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+      direction VARCHAR(10) NOT NULL,
+      account VARCHAR(50) NOT NULL,
+      reference_id VARCHAR(100) NOT NULL DEFAULT '',
+      note TEXT NOT NULL,
+      metadata JSON DEFAULT NULL,
+      created_at DATETIME(3) NOT NULL,
+      INDEX idx_ledger_reference_id (reference_id),
+      INDEX idx_ledger_created_at (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  await mysqlPool.query(`
+    CREATE TABLE IF NOT EXISTS \`${MYSQL_TABLES.finance}\` (
+      id TINYINT NOT NULL PRIMARY KEY,
+      policy JSON NOT NULL,
+      balances JSON NOT NULL,
+      last_auto_settlement_date VARCHAR(16) NOT NULL DEFAULT '',
+      initialized_at DATETIME(3) NOT NULL,
+      updated_at DATETIME(3) NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+}
+
+async function loadDbFromMysql() {
+  const [customerRows] = await mysqlPool.query(`SELECT * FROM \`${MYSQL_TABLES.customers}\``);
+  const [paymentRows] = await mysqlPool.query(`SELECT * FROM \`${MYSQL_TABLES.payments}\``);
+  const [settlementRows] = await mysqlPool.query(`SELECT * FROM \`${MYSQL_TABLES.settlements}\``);
+  const [refundRows] = await mysqlPool.query(`SELECT * FROM \`${MYSQL_TABLES.refunds}\``);
+  const [ledgerRows] = await mysqlPool.query(`SELECT * FROM \`${MYSQL_TABLES.ledger}\``);
+  const [financeRows] = await mysqlPool.query(`SELECT * FROM \`${MYSQL_TABLES.finance}\` WHERE id = 1 LIMIT 1`);
+
+  return ensureDbSchema({
+    customers: customerRows.map((row) => ({
+      id: row.id,
+      fullName: row.full_name,
+      phone: row.phone,
+      createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+      updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+      lastActivityAt: row.last_activity_at instanceof Date ? row.last_activity_at.toISOString() : row.last_activity_at
+    })),
+    payments: paymentRows.map((row) => ({
+      id: row.id,
+      customerId: row.customer_id,
+      phone: row.phone,
+      amount: roundCurrency(row.amount),
+      unitType: row.unit_type,
+      status: row.status,
+      paymentChannel: row.payment_channel,
+      checkoutRequestId: row.checkout_request_id || '',
+      merchantRequestId: row.merchant_request_id || '',
+      mpesaReceipt: row.mpesa_receipt || '',
+      mpesaReceiptSubmitted: row.mpesa_receipt_submitted || '',
+      tokenCode: row.token_code || '',
+      litresBought: Number(row.litres_bought || 0),
+      refundedAmount: roundCurrency(row.refunded_amount),
+      refundStatus: row.refund_status || 'none',
+      failureReason: row.failure_reason || '',
+      rejectionReason: row.rejection_reason || '',
+      settlementId: row.settlement_id || '',
+      sms: mysqlParseJson(row.sms, null),
+      approvedAt: row.approved_at instanceof Date ? row.approved_at.toISOString() : row.approved_at || '',
+      createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+      updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at
+    })),
+    settlements: settlementRows.map((row) => ({
+      id: row.id,
+      paymentId: row.payment_id,
+      customerId: row.customer_id,
+      totalAmount: roundCurrency(row.total_amount),
+      savingsAmount: roundCurrency(row.savings_amount),
+      operationsAmount: roundCurrency(row.operations_amount),
+      status: row.status,
+      createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at
+    })),
+    refunds: refundRows.map((row) => ({
+      id: row.id,
+      paymentId: row.payment_id,
+      customerId: row.customer_id,
+      amount: roundCurrency(row.amount),
+      reason: row.reason,
+      status: row.status,
+      requestedBy: row.requested_by || '',
+      approvedBy: row.approved_by || '',
+      approvedAt: row.approved_at instanceof Date ? row.approved_at.toISOString() : row.approved_at || '',
+      issuedRefundId: row.issued_refund_id || '',
+      createdBy: row.created_by || '',
+      createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+      updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at
+    })),
+    ledger: ledgerRows.map((row) => ({
+      id: row.id,
+      type: row.type,
+      amount: roundCurrency(row.amount),
+      direction: row.direction,
+      account: row.account,
+      referenceId: row.reference_id,
+      note: row.note,
+      metadata: mysqlParseJson(row.metadata, {}),
+      createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at
+    })),
+    finance: financeRows.length > 0 ? {
+      policy: mysqlParseJson(financeRows[0].policy, defaultFinancePolicy()),
+      balances: mysqlParseJson(financeRows[0].balances, { collections: 0, operations: 0, savings: 0 }),
+      lastAutoSettlementDate: financeRows[0].last_auto_settlement_date || '',
+      initializedAt: financeRows[0].initialized_at instanceof Date ? financeRows[0].initialized_at.toISOString() : financeRows[0].initialized_at,
+      updatedAt: financeRows[0].updated_at instanceof Date ? financeRows[0].updated_at.toISOString() : financeRows[0].updated_at
+    } : undefined
+  });
+}
+
+async function persistDbToMysql() {
+  if (!mysqlPool || !dbCache) {
+    return;
+  }
+
+  const db = ensureDbSchema(dbCache);
+
+  await mysqlPool.query('START TRANSACTION');
+  try {
+    await mysqlPool.query(`DELETE FROM \`${MYSQL_TABLES.ledger}\``);
+    await mysqlPool.query(`DELETE FROM \`${MYSQL_TABLES.refunds}\``);
+    await mysqlPool.query(`DELETE FROM \`${MYSQL_TABLES.settlements}\``);
+    await mysqlPool.query(`DELETE FROM \`${MYSQL_TABLES.payments}\``);
+    await mysqlPool.query(`DELETE FROM \`${MYSQL_TABLES.customers}\``);
+    await mysqlPool.query(`DELETE FROM \`${MYSQL_TABLES.finance}\``);
+
+    if (db.customers.length > 0) {
+      await mysqlPool.query(
+        `INSERT INTO \`${MYSQL_TABLES.customers}\` (id, full_name, phone, created_at, updated_at, last_activity_at)
+         VALUES ?`,
+        [db.customers.map((customer) => [
+          customer.id,
+          customer.fullName,
+          customer.phone,
+          customer.createdAt ? new Date(customer.createdAt) : new Date(),
+          customer.updatedAt ? new Date(customer.updatedAt) : new Date(),
+          customer.lastActivityAt ? new Date(customer.lastActivityAt) : new Date()
+        ])]
+      );
+    }
+
+    if (db.payments.length > 0) {
+      await mysqlPool.query(
+        `INSERT INTO \`${MYSQL_TABLES.payments}\`
+         (id, customer_id, phone, amount, unit_type, status, payment_channel, checkout_request_id, merchant_request_id, mpesa_receipt, mpesa_receipt_submitted, token_code, litres_bought, refunded_amount, refund_status, failure_reason, rejection_reason, settlement_id, sms, approved_at, created_at, updated_at)
+         VALUES ?`,
+        [db.payments.map((payment) => [
+          payment.id,
+          payment.customerId,
+          payment.phone,
+          roundCurrency(payment.amount),
+          payment.unitType,
+          payment.status,
+          payment.paymentChannel || 'mpesa_stk',
+          payment.checkoutRequestId || null,
+          payment.merchantRequestId || null,
+          payment.mpesaReceipt || null,
+          payment.mpesaReceiptSubmitted || null,
+          payment.tokenCode || null,
+          Number(payment.litresBought || 0),
+          roundCurrency(payment.refundedAmount || 0),
+          payment.refundStatus || 'none',
+          payment.failureReason || null,
+          payment.rejectionReason || null,
+          payment.settlementId || null,
+          payment.sms ? mysqlJson(payment.sms) : null,
+          payment.approvedAt ? new Date(payment.approvedAt) : null,
+          payment.createdAt ? new Date(payment.createdAt) : new Date(),
+          payment.updatedAt ? new Date(payment.updatedAt) : new Date()
+        ])]
+      );
+    }
+
+    if (db.settlements.length > 0) {
+      await mysqlPool.query(
+        `INSERT INTO \`${MYSQL_TABLES.settlements}\` (id, payment_id, customer_id, total_amount, savings_amount, operations_amount, status, created_at)
+         VALUES ?`,
+        [db.settlements.map((settlement) => [
+          settlement.id,
+          settlement.paymentId,
+          settlement.customerId,
+          roundCurrency(settlement.totalAmount),
+          roundCurrency(settlement.savingsAmount),
+          roundCurrency(settlement.operationsAmount),
+          settlement.status,
+          settlement.createdAt ? new Date(settlement.createdAt) : new Date()
+        ])]
+      );
+    }
+
+    if (db.refunds.length > 0) {
+      await mysqlPool.query(
+        `INSERT INTO \`${MYSQL_TABLES.refunds}\`
+         (id, payment_id, customer_id, amount, reason, status, requested_by, approved_by, approved_at, issued_refund_id, created_by, created_at, updated_at)
+         VALUES ?`,
+        [db.refunds.map((refund) => [
+          refund.id,
+          refund.paymentId,
+          refund.customerId,
+          roundCurrency(refund.amount),
+          refund.reason,
+          refund.status,
+          refund.requestedBy || null,
+          refund.approvedBy || null,
+          refund.approvedAt ? new Date(refund.approvedAt) : null,
+          refund.issuedRefundId || null,
+          refund.createdBy || null,
+          refund.createdBy || null,
+          refund.createdAt ? new Date(refund.createdAt) : new Date(),
+          refund.updatedAt ? new Date(refund.updatedAt) : new Date()
+        ])]
+      );
+    }
+
+    if (db.ledger.length > 0) {
+      await mysqlPool.query(
+        `INSERT INTO \`${MYSQL_TABLES.ledger}\` (id, type, amount, direction, account, reference_id, note, metadata, created_at)
+         VALUES ?`,
+        [db.ledger.map((entry) => [
+          entry.id,
+          entry.type,
+          roundCurrency(entry.amount),
+          entry.direction,
+          entry.account,
+          entry.referenceId || '',
+          entry.note || '',
+          entry.metadata ? mysqlJson(entry.metadata) : null,
+          entry.createdAt ? new Date(entry.createdAt) : new Date()
+        ])]
+      );
+    }
+
+    if (db.finance) {
+      await mysqlPool.query(
+        `INSERT INTO \`${MYSQL_TABLES.finance}\` (id, policy, balances, last_auto_settlement_date, initialized_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE policy = VALUES(policy), balances = VALUES(balances), last_auto_settlement_date = VALUES(last_auto_settlement_date), initialized_at = VALUES(initialized_at), updated_at = VALUES(updated_at)`,
+        [
+          1,
+          mysqlJson(db.finance.policy || defaultFinancePolicy()),
+          mysqlJson(db.finance.balances || { collections: 0, operations: 0, savings: 0 }),
+          db.finance.lastAutoSettlementDate || '',
+          db.finance.initializedAt ? new Date(db.finance.initializedAt) : new Date(),
+          db.finance.updatedAt ? new Date(db.finance.updatedAt) : new Date()
+        ]
+      );
+    }
+
+    await mysqlPool.query('COMMIT');
+  } catch (error) {
+    await mysqlPool.query('ROLLBACK');
+    throw error;
+  }
+}
+
+function scheduleDbPersist() {
+  if (!mysqlPool || !dbCache) {
+    return;
+  }
+
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+  }
+
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    persistPromise = persistPromise
+      .catch(() => {})
+      .then(() => persistDbToMysql())
+      .catch((error) => {
+        console.error(`Failed to persist database to MySQL: ${error.message}`);
+      });
+  }, 50);
+}
+
+async function initializeDatabase() {
+  if (dbInitPromise) {
+    return dbInitPromise;
+  }
+
+  dbInitPromise = (async () => {
+    const seedDb = loadSeedDb();
+
+    if (!hasMysqlConfig()) {
+      console.warn('MYSQL_* configuration is missing. Falling back to local file storage.');
+      dbCache = seedDb;
+      return dbCache;
+    }
+
+    mysqlPool = createMysqlPool();
+
+    try {
+      await ensureMysqlSchema();
+      const [customerCountRows] = await mysqlPool.query(`SELECT COUNT(*) AS count FROM \`${MYSQL_TABLES.customers}\``);
+
+      if (Number(customerCountRows[0].count || 0) === 0) {
+        dbCache = seedDb;
+        await persistDbToMysql();
+      } else {
+        dbCache = await loadDbFromMysql();
+      }
+
+      return dbCache;
+    } catch (error) {
+      console.warn(`MySQL initialization failed, falling back to local file storage: ${error.message}`);
+      mysqlPool = null;
+      dbCache = seedDb;
+      return dbCache;
+    }
+  })();
+
+  return dbInitPromise;
+}
+
 function readDb() {
-  const content = fs.readFileSync(DB_PATH, 'utf-8');
-  const data = JSON.parse(content);
-  return ensureDbSchema(data);
+  if (!dbCache) {
+    dbCache = loadSeedDb();
+  }
+
+  return dbCache;
 }
 
 function writeDb(data) {
-  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
+  dbCache = ensureDbSchema(data);
+  scheduleDbPersist();
 }
 
 function nowIso() {
@@ -1357,8 +1849,17 @@ app.get('/api/admin/payments', (req, res) => {
   res.json({ payments: db.payments.slice().reverse() });
 });
 
-app.listen(PORT, () => {
-  console.log(`Aqualine server running at http://localhost:${PORT}`);
+async function startServer() {
+  await initializeDatabase();
+
+  app.listen(PORT, () => {
+    console.log(`Aqualine server running at http://localhost:${PORT}`);
+  });
+}
+
+startServer().catch((error) => {
+  console.error(`Failed to start server: ${error.message}`);
+  process.exit(1);
 });
 
 if (AUTO_SETTLEMENT_ENABLED) {

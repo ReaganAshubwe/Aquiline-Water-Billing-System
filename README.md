@@ -36,6 +36,17 @@ Web-based water billing system with customer registration, MPESA payment process
 - Vanilla JavaScript frontend
 - JSON file storage (`data/db.json`)
 
+### MySQL / phpMyAdmin option
+
+The app can also use MySQL through phpMyAdmin with the database name `my_db`.
+
+1. Create a database named `my_db` in phpMyAdmin.
+2. Import [schema/my_db.sql](schema/my_db.sql).
+3. Copy [.env.example](.env.example) to `.env` and set the MySQL credentials.
+4. Start the app with `npm start`.
+
+The app expects table names with the `awbc_` prefix, such as `awbc_customers` and `awbc_payments`.
+
 ## Quick Start
 
 ### 0) Prerequisites
