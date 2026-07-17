@@ -5,11 +5,14 @@ CREATE TABLE IF NOT EXISTS `awbc_customers` (
   `id` CHAR(36) NOT NULL,
   `full_name` VARCHAR(255) NOT NULL,
   `phone` VARCHAR(32) NOT NULL,
+  `login_code` VARCHAR(32) DEFAULT NULL,
+  `login_token` VARCHAR(64) DEFAULT NULL,
   `created_at` DATETIME(3) NOT NULL,
   `updated_at` DATETIME(3) NOT NULL,
   `last_activity_at` DATETIME(3) NOT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_awbc_customers_phone` (`phone`)
+  UNIQUE KEY `uq_awbc_customers_phone` (`phone`),
+  UNIQUE KEY `uq_awbc_customers_login_token` (`login_token`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `awbc_payments` (

@@ -113,6 +113,31 @@ function requireApprover(req, res, next) {
   next();
 }
 
+function parseAuthorizationToken(req) {
+  const authorization = req.get('authorization') || '';
+  if (!authorization.startsWith('Bearer ')) {
+    return '';
+  }
+
+  return authorization.slice(7).trim();
+}
+
+function requireCustomer(req, res, next) {
+  const token = parseAuthorizationToken(req);
+  if (!token) {
+    return res.status(401).json({ error: 'Customer login required' });
+  }
+
+  const db = readDb();
+  const customer = db.customers.find((entry) => entry.loginToken === token);
+  if (!customer) {
+    return res.status(401).json({ error: 'Invalid customer session' });
+  }
+
+  req.customer = customer;
+  next();
+}
+
 function loadSeedDb() {
   const preferredPaths = [DB_SEED_PATH, DB_PATH];
 
@@ -183,11 +208,51 @@ async function ensureMysqlSchema() {
       id CHAR(36) NOT NULL PRIMARY KEY,
       full_name VARCHAR(255) NOT NULL,
       phone VARCHAR(32) NOT NULL UNIQUE,
+      login_code VARCHAR(32) DEFAULT NULL,
+      login_token VARCHAR(64) DEFAULT NULL,
       created_at DATETIME(3) NOT NULL,
       updated_at DATETIME(3) NOT NULL,
-      last_activity_at DATETIME(3) NOT NULL
+      last_activity_at DATETIME(3) NOT NULL,
+      UNIQUE KEY uq_awbc_customers_login_token (login_token)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+
+  const customerColumnChecks = [
+    ['login_code', 'VARCHAR(32) DEFAULT NULL'],
+    ['login_token', 'VARCHAR(64) DEFAULT NULL']
+  ];
+
+  for (const [columnName, columnDefinition] of customerColumnChecks) {
+    const [rows] = await mysqlPool.query(
+      `SELECT COUNT(*) AS count
+       FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = ?
+         AND TABLE_NAME = ?
+         AND COLUMN_NAME = ?`,
+      [MYSQL_DATABASE, MYSQL_TABLES.customers, columnName]
+    );
+
+    if (Number(rows[0]?.count || 0) === 0) {
+      await mysqlPool.query(
+        `ALTER TABLE \`${MYSQL_TABLES.customers}\` ADD COLUMN \`${columnName}\` ${columnDefinition}`
+      );
+    }
+  }
+
+  const [loginTokenIndexRows] = await mysqlPool.query(
+    `SELECT COUNT(*) AS count
+     FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = ?
+       AND TABLE_NAME = ?
+       AND INDEX_NAME = 'uq_awbc_customers_login_token'`,
+    [MYSQL_DATABASE, MYSQL_TABLES.customers]
+  );
+
+  if (Number(loginTokenIndexRows[0]?.count || 0) === 0) {
+    await mysqlPool.query(
+      `ALTER TABLE \`${MYSQL_TABLES.customers}\` ADD UNIQUE KEY uq_awbc_customers_login_token (login_token)`
+    );
+  }
 
   await mysqlPool.query(`
     CREATE TABLE IF NOT EXISTS \`${MYSQL_TABLES.payments}\` (
@@ -300,6 +365,8 @@ async function loadDbFromMysql() {
       id: row.id,
       fullName: row.full_name,
       phone: row.phone,
+      loginCode: row.login_code || '',
+      loginToken: row.login_token || '',
       createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
       updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
       lastActivityAt: row.last_activity_at instanceof Date ? row.last_activity_at.toISOString() : row.last_activity_at
@@ -392,12 +459,14 @@ async function persistDbToMysql() {
 
     if (db.customers.length > 0) {
       await mysqlPool.query(
-        `INSERT INTO \`${MYSQL_TABLES.customers}\` (id, full_name, phone, created_at, updated_at, last_activity_at)
+        `INSERT INTO \`${MYSQL_TABLES.customers}\` (id, full_name, phone, login_code, login_token, created_at, updated_at, last_activity_at)
          VALUES ?`,
         [db.customers.map((customer) => [
           customer.id,
           customer.fullName,
           customer.phone,
+          customer.loginCode || null,
+          customer.loginToken || null,
           customer.createdAt ? new Date(customer.createdAt) : new Date(),
           customer.updatedAt ? new Date(customer.updatedAt) : new Date(),
           customer.lastActivityAt ? new Date(customer.lastActivityAt) : new Date()
@@ -719,6 +788,21 @@ function ensureDbSchema(db) {
     if (typeof payment.updatedAt !== 'string') {
       payment.updatedAt = payment.createdAt || nowIso();
     }
+    if (typeof payment.customerLoginToken !== 'string') {
+      payment.customerLoginToken = '';
+    }
+  }
+
+  for (const customer of db.customers) {
+    if (typeof customer.loginCode !== 'string') {
+      customer.loginCode = '';
+    }
+    if (typeof customer.loginToken !== 'string') {
+      customer.loginToken = '';
+    }
+    if (typeof customer.updatedAt !== 'string') {
+      customer.updatedAt = customer.createdAt || nowIso();
+    }
   }
 
   return db;
@@ -952,6 +1036,18 @@ function normalizeKenyanPhone(phone) {
   return cleaned;
 }
 
+function generateLoginCode() {
+  return crypto.randomInt(100000, 999999).toString();
+}
+
+function generateCustomerToken() {
+  return crypto.randomUUID();
+}
+
+function findCustomerByLoginToken(db, token) {
+  return db.customers.find((customer) => customer.loginToken === token);
+}
+
 function mpesaBaseUrl() {
   return MPESA_ENV === 'live' ? 'https://api.safaricom.co.ke' : 'https://sandbox.safaricom.co.ke';
 }
@@ -1164,6 +1260,100 @@ function calculateLitres(amount, unitType) {
 function findCustomerByPhone(db, phone) {
   return db.customers.find((customer) => customer.phone === phone);
 }
+
+app.get('/customer.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'customer.html'));
+});
+
+app.post('/api/customer/login/start', (req, res) => {
+  const cleanedPhone = normalizePhone(req.body?.phone);
+  if (!cleanedPhone) {
+    return res.status(400).json({ error: 'phone is required' });
+  }
+
+  const db = readDb();
+  const customer = findCustomerByPhone(db, cleanedPhone);
+  if (!customer) {
+    return res.status(404).json({ error: 'Customer not found. Please register first.' });
+  }
+
+  customer.loginCode = generateLoginCode();
+  customer.loginToken = '';
+  customer.updatedAt = nowIso();
+  writeDb(db);
+
+  const loginMessage = `Aqualine login code: ${customer.loginCode}. It expires after one use.`;
+
+  const smsPromise = sendTokenSms(customer.phone, loginMessage)
+    .then((smsResult) => {
+      if (!smsResult.success) {
+        console.warn(`Customer login SMS failed for ${customer.phone}: ${smsResult.error || 'unknown error'}`);
+      }
+    })
+    .catch((error) => {
+      console.warn(`Customer login SMS error for ${customer.phone}: ${error.message}`);
+    });
+
+  return res.json({
+    message: hasSmsConfig()
+      ? 'Login code sent to your phone.'
+      : 'Login code generated. SMS is not configured, so the code is shown for testing.',
+    loginCode: hasSmsConfig() ? undefined : customer.loginCode,
+    smsQueued: Boolean(smsPromise)
+  });
+});
+
+app.post('/api/customer/login', (req, res) => {
+  const cleanedPhone = normalizePhone(req.body?.phone);
+  const loginCode = String(req.body?.loginCode || '').trim();
+
+  if (!cleanedPhone || !loginCode) {
+    return res.status(400).json({ error: 'phone and loginCode are required' });
+  }
+
+  const db = readDb();
+  const customer = findCustomerByPhone(db, cleanedPhone);
+  if (!customer || customer.loginCode !== loginCode) {
+    return res.status(401).json({ error: 'Invalid login code' });
+  }
+
+  customer.loginToken = generateCustomerToken();
+  customer.lastActivityAt = nowIso();
+  customer.updatedAt = nowIso();
+  writeDb(db);
+
+  return res.json({
+    message: 'Customer login successful',
+    customer: {
+      id: customer.id,
+      fullName: customer.fullName,
+      phone: customer.phone,
+      loginToken: customer.loginToken
+    }
+  });
+});
+
+app.get('/api/customer/me', requireCustomer, (req, res) => {
+  const db = readDb();
+  const customer = db.customers.find((entry) => entry.id === req.customer.id);
+
+  const customerPayments = db.payments
+    .filter((payment) => payment.customerId === customer.id)
+    .slice()
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  res.json({
+    customer: {
+      id: customer.id,
+      fullName: customer.fullName,
+      phone: customer.phone,
+      createdAt: customer.createdAt,
+      lastActivityAt: customer.lastActivityAt
+    },
+    payments: customerPayments,
+    balances: db.finance?.balances || { collections: 0, operations: 0, savings: 0 }
+  });
+});
 
 app.get('/api/pricing', (req, res) => {
   res.json(PRICING);
