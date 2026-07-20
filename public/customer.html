@@ -197,6 +197,115 @@
           </table>
         </div>
       </section>
+
+      <!-- Pay via MPESA Section (Only visible when logged in) -->
+      <section id="pay" class="account-view hidden rounded-3xl border border-white/70 bg-white/90 p-6 shadow-soft md:p-8">
+        <div class="mb-5 flex items-center justify-between">
+          <h2 class="text-xl font-bold text-aqua-900 md:text-2xl">Pay via MPESA</h2>
+          <span class="rounded-lg bg-aqua-100 px-3 py-1 text-xs font-semibold text-aqua-700">Instant Token</span>
+        </div>
+        <form id="paymentForm" class="grid gap-4 md:grid-cols-3">
+          <label class="space-y-2 text-sm font-semibold text-aqua-800">
+            Phone Number
+            <input
+              class="w-full rounded-xl border border-aqua-200 bg-white px-4 py-3 outline-none transition focus:border-aqua-500 focus:ring-4 focus:ring-aqua-200"
+              type="text"
+              name="phone"
+              readonly
+              required
+            />
+          </label>
+          <label class="space-y-2 text-sm font-semibold text-aqua-800">
+            Amount (KES)
+            <input
+              class="w-full rounded-xl border border-aqua-200 bg-white px-4 py-3 outline-none transition focus:border-aqua-500 focus:ring-4 focus:ring-aqua-200"
+              type="number"
+              name="amount"
+              min="1"
+              required
+            />
+          </label>
+          <label class="space-y-2 text-sm font-semibold text-aqua-800">
+            Billing Mode
+            <select
+              class="w-full rounded-xl border border-aqua-200 bg-white px-4 py-3 outline-none transition focus:border-aqua-500 focus:ring-4 focus:ring-aqua-200"
+              name="unitType"
+              required
+            >
+              <option value="litre">Per Litre</option>
+              <option value="1000_litre">Per 1000 Litres</option>
+            </select>
+          </label>
+          <button
+            type="submit"
+            class="md:col-span-3 rounded-xl bg-gradient-to-r from-aqua-600 to-aqua-700 px-5 py-3 font-bold text-white shadow-soft transition hover:-translate-y-0.5 hover:from-aqua-500 hover:to-aqua-600"
+          >
+            Pay and Generate Token
+          </button>
+        </form>
+        <p id="paymentResult" class="mt-4 min-h-6 text-sm font-semibold"></p>
+      </section>
+
+      <!-- Manual MPESA Bridge (Only visible when logged in) -->
+      <section id="manualPay" class="account-view hidden rounded-3xl border border-white/70 bg-white/90 p-6 shadow-soft md:p-8">
+        <div class="mb-5 flex items-center justify-between">
+          <h2 class="text-xl font-bold text-aqua-900 md:text-2xl">Manual MPESA Bridge (Temporary)</h2>
+          <span class="rounded-lg bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">Admin Verification</span>
+        </div>
+        <p id="manualInstructions" class="rounded-xl border border-aqua-200 bg-aqua-50 px-4 py-3 text-sm text-slate-700">
+          Loading payment instructions...
+        </p>
+        <form id="manualPaymentForm" class="mt-4 grid gap-4 md:grid-cols-4">
+          <label class="space-y-2 text-sm font-semibold text-aqua-800">
+            Phone Number
+            <input
+              class="w-full rounded-xl border border-aqua-200 bg-white px-4 py-3 outline-none transition focus:border-aqua-500 focus:ring-4 focus:ring-aqua-200"
+              type="text"
+              name="phone"
+              readonly
+              required
+            />
+          </label>
+          <label class="space-y-2 text-sm font-semibold text-aqua-800">
+            Amount (KES)
+            <input
+              class="w-full rounded-xl border border-aqua-200 bg-white px-4 py-3 outline-none transition focus:border-aqua-500 focus:ring-4 focus:ring-aqua-200"
+              type="number"
+              name="amount"
+              min="1"
+              required
+            />
+          </label>
+          <label class="space-y-2 text-sm font-semibold text-aqua-800">
+            Billing Mode
+            <select
+              class="w-full rounded-xl border border-aqua-200 bg-white px-4 py-3 outline-none transition focus:border-aqua-500 focus:ring-4 focus:ring-aqua-200"
+              name="unitType"
+              required
+            >
+              <option value="litre">Per Litre</option>
+              <option value="1000_litre">Per 1000 Litres</option>
+            </select>
+          </label>
+          <label class="space-y-2 text-sm font-semibold text-aqua-800">
+            MPESA Receipt Code
+            <input
+              class="w-full rounded-xl border border-aqua-200 bg-white px-4 py-3 uppercase outline-none transition focus:border-aqua-500 focus:ring-4 focus:ring-aqua-200"
+              type="text"
+              name="mpesaReceipt"
+              placeholder="e.g. RKT8BRIDGE01"
+              required
+            />
+          </label>
+          <button
+            type="submit"
+            class="md:col-span-4 rounded-xl border border-aqua-300 bg-white px-5 py-3 font-bold text-aqua-800 shadow-soft transition hover:-translate-y-0.5 hover:bg-aqua-50"
+          >
+            Submit Manual Payment for Verification
+          </button>
+        </form>
+        <p id="manualPaymentResult" class="mt-4 min-h-6 text-sm font-semibold"></p>
+      </section>
     </main>
 
     <div id="toast" class="pointer-events-none fixed right-4 top-20 z-50 rounded-xl bg-slate-900/90 px-4 py-3 text-sm font-medium text-white opacity-0 shadow-soft transition-all duration-300"></div>
