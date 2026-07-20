@@ -134,20 +134,12 @@ function initMobileMenu() {
 async function loadPricing() {
   try {
     const pricing = await api('/api/pricing');
-    document.getElementById('pricing').textContent = `Pricing: KES ${pricing.perLitre}/litre or KES ${pricing.per1000Litre}/1000 litres`;
+    const el = document.getElementById('pricing');
+    if (el) {
+      el.textContent = `Pricing: KES ${pricing.perLitre}/litre or KES ${pricing.per1000Litre}/1000 litres`;
+    }
   } catch (error) {
-    setText('paymentResult', error.message, true);
     showToast(error.message, true);
-  }
-}
-
-async function loadPaymentInstructions() {
-  try {
-    const result = await api('/api/payment-instructions');
-    const message = result.instructions || 'Submit your MPESA receipt code below for admin verification.';
-    document.getElementById('manualInstructions').textContent = message;
-  } catch (error) {
-    setText('manualPaymentResult', error.message, true);
   }
 }
 
@@ -177,71 +169,6 @@ document.getElementById('registerForm').addEventListener('submit', async (event)
   }
 });
 
-document.getElementById('paymentForm').addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const submitBtn = event.target.querySelector('button[type="submit"]');
-  const formData = new FormData(event.target);
-  const payload = {
-    phone: formData.get('phone'),
-    amount: Number(formData.get('amount')),
-    unitType: formData.get('unitType')
-  };
-
-  try {
-    setButtonLoading(submitBtn, true, 'Processing Payment...');
-    const result = await api('/api/payments/mpesa', {
-      method: 'POST',
-      body: JSON.stringify(payload)
-    });
-
-    if (result.payment?.status === 'pending') {
-      setText('paymentResult', result.message || 'MPESA prompt sent. Complete payment on phone.');
-      showToast('MPESA prompt sent to phone');
-    } else {
-      setText(
-        'paymentResult',
-        `Success! Token ${result.payment.tokenCode}, litres ${result.payment.litresBought}, receipt ${result.payment.mpesaReceipt}.`
-      );
-      showToast('Payment successful and token generated');
-    }
-    event.target.reset();
-  } catch (error) {
-    setText('paymentResult', error.message, true);
-    showToast(error.message, true);
-  } finally {
-    setButtonLoading(submitBtn, false);
-  }
-});
-
-document.getElementById('manualPaymentForm').addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const submitBtn = event.target.querySelector('button[type="submit"]');
-  const formData = new FormData(event.target);
-  const payload = {
-    phone: formData.get('phone'),
-    amount: Number(formData.get('amount')),
-    unitType: formData.get('unitType'),
-    mpesaReceipt: formData.get('mpesaReceipt')
-  };
-
-  try {
-    setButtonLoading(submitBtn, true, 'Submitting...');
-    const result = await api('/api/payments/manual-submit', {
-      method: 'POST',
-      body: JSON.stringify(payload)
-    });
-    setText('manualPaymentResult', result.message);
-    showToast('Manual payment submitted for admin verification');
-    event.target.reset();
-  } catch (error) {
-    setText('manualPaymentResult', error.message, true);
-    showToast(error.message, true);
-  } finally {
-    setButtonLoading(submitBtn, false);
-  }
-});
-
 loadPricing();
-loadPaymentInstructions();
 initMobileMenu();
 initThemeToggle();

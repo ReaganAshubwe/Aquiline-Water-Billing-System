@@ -27,9 +27,52 @@ function formatMoney(value) {
   return `KES ${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function setText(id, text, isError = false) {
+  const el = document.getElementById(id);
+  if (el) {
+    el.textContent = text;
+    el.classList.remove('text-red-600', 'text-aqua-700');
+    el.classList.add(isError ? 'text-red-600' : 'text-aqua-700');
+  }
+}
+
+function setButtonLoading(button, isLoading, loadingText) {
+  if (!button) return;
+  if (isLoading) {
+    button.dataset.originalText = button.textContent;
+    button.textContent = loadingText;
+    button.disabled = true;
+    button.classList.add('opacity-70', 'cursor-not-allowed');
+    return;
+  }
+
+  if (button.dataset.originalText) {
+    button.textContent = button.dataset.originalText;
+  }
+  button.disabled = false;
+  button.classList.remove('opacity-70', 'cursor-not-allowed');
+}
+
+async function loadPaymentInstructions() {
+  try {
+    const result = await api('/api/payment-instructions');
+    const message = result.instructions || 'Submit your MPESA receipt code below for admin verification.';
+    const el = document.getElementById('manualInstructions');
+    if (el) el.textContent = message;
+  } catch (error) {
+    setText('manualPaymentResult', error.message, true);
+  }
+}
+
 function renderAccount(customer, payments) {
   document.getElementById('accountPanel').classList.remove('hidden');
+  document.querySelectorAll('.account-view').forEach((el) => el.classList.remove('hidden'));
   document.getElementById('customerSummary').textContent = `${customer.fullName} • ${customer.phone}`;
+
+  // Pre-fill phone inputs in payment forms
+  document.querySelectorAll('input[name="phone"]').forEach((input) => {
+    input.value = customer.phone;
+  });
 
   const tbody = document.getElementById('paymentsBody');
   tbody.innerHTML = '';
@@ -61,6 +104,7 @@ async function loadMe() {
     renderAccount(result.customer, result.payments || []);
   } catch {
     sessionStorage.removeItem(CUSTOMER_TOKEN_STORAGE);
+    document.querySelectorAll('.account-view').forEach((el) => el.classList.add('hidden'));
   }
 }
 
@@ -88,7 +132,76 @@ document.getElementById('customerLoginForm').addEventListener('submit', async (e
 document.getElementById('logoutButton').addEventListener('click', () => {
   sessionStorage.removeItem(CUSTOMER_TOKEN_STORAGE);
   document.getElementById('accountPanel').classList.add('hidden');
+  document.querySelectorAll('.account-view').forEach((el) => el.classList.add('hidden'));
   showToast('Logged out');
 });
 
+document.getElementById('paymentForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const submitBtn = event.target.querySelector('button[type="submit"]');
+  const formData = new FormData(event.target);
+  const payload = {
+    phone: formData.get('phone'),
+    amount: Number(formData.get('amount')),
+    unitType: formData.get('unitType')
+  };
+
+  try {
+    setButtonLoading(submitBtn, true, 'Processing Payment...');
+    const result = await api('/api/payments/mpesa', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+
+    if (result.payment?.status === 'pending') {
+      setText('paymentResult', result.message || 'MPESA prompt sent. Complete payment on phone.');
+      showToast('MPESA prompt sent to phone');
+    } else {
+      setText(
+        'paymentResult',
+        `Success! Token ${result.payment.tokenCode}, litres ${result.payment.litresBought}, receipt ${result.payment.mpesaReceipt}.`
+      );
+      showToast('Payment successful and token generated');
+      await loadMe();
+    }
+    event.target.querySelector('input[name="amount"]').value = '';
+  } catch (error) {
+    setText('paymentResult', error.message, true);
+    showToast(error.message, true);
+  } finally {
+    setButtonLoading(submitBtn, false);
+  }
+});
+
+document.getElementById('manualPaymentForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const submitBtn = event.target.querySelector('button[type="submit"]');
+  const formData = new FormData(event.target);
+  const payload = {
+    phone: formData.get('phone'),
+    amount: Number(formData.get('amount')),
+    unitType: formData.get('unitType'),
+    mpesaReceipt: formData.get('mpesaReceipt')
+  };
+
+  try {
+    setButtonLoading(submitBtn, true, 'Submitting...');
+    const result = await api('/api/payments/manual-submit', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+    setText('manualPaymentResult', result.message);
+    showToast('Manual payment submitted for admin verification');
+    await loadMe();
+    event.target.querySelector('input[name="amount"]').value = '';
+    event.target.querySelector('input[name="mpesaReceipt"]').value = '';
+  } catch (error) {
+    setText('manualPaymentResult', error.message, true);
+    showToast(error.message, true);
+  } finally {
+    setButtonLoading(submitBtn, false);
+  }
+});
+
 loadMe();
+loadPaymentInstructions();
