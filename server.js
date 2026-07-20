@@ -1036,8 +1036,14 @@ function normalizeKenyanPhone(phone) {
   return cleaned;
 }
 
-function generateLoginCode() {
-  return crypto.randomInt(100000, 999999).toString();
+function normalizeFullName(name) {
+  return String(name || '').trim().replace(/\s+/g, ' ');
+}
+
+function fullNamesMatch(storedName, providedName) {
+  return (
+    normalizeFullName(storedName).toLowerCase() === normalizeFullName(providedName).toLowerCase()
+  );
 }
 
 function generateCustomerToken() {
@@ -1265,56 +1271,18 @@ app.get('/customer.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'customer.html'));
 });
 
-app.post('/api/customer/login/start', (req, res) => {
-  const cleanedPhone = normalizePhone(req.body?.phone);
-  if (!cleanedPhone) {
-    return res.status(400).json({ error: 'phone is required' });
-  }
-
-  const db = readDb();
-  const customer = findCustomerByPhone(db, cleanedPhone);
-  if (!customer) {
-    return res.status(404).json({ error: 'Customer not found. Please register first.' });
-  }
-
-  customer.loginCode = generateLoginCode();
-  customer.loginToken = '';
-  customer.updatedAt = nowIso();
-  writeDb(db);
-
-  const loginMessage = `Aqualine login code: ${customer.loginCode}. It expires after one use.`;
-
-  const smsPromise = sendTokenSms(customer.phone, loginMessage)
-    .then((smsResult) => {
-      if (!smsResult.success) {
-        console.warn(`Customer login SMS failed for ${customer.phone}: ${smsResult.error || 'unknown error'}`);
-      }
-    })
-    .catch((error) => {
-      console.warn(`Customer login SMS error for ${customer.phone}: ${error.message}`);
-    });
-
-  return res.json({
-    message: hasSmsConfig()
-      ? 'Login code sent to your phone.'
-      : 'Login code generated. SMS is not configured, so the code is shown for testing.',
-    loginCode: hasSmsConfig() ? undefined : customer.loginCode,
-    smsQueued: Boolean(smsPromise)
-  });
-});
-
 app.post('/api/customer/login', (req, res) => {
+  const fullName = normalizeFullName(req.body?.fullName);
   const cleanedPhone = normalizePhone(req.body?.phone);
-  const loginCode = String(req.body?.loginCode || '').trim();
 
-  if (!cleanedPhone || !loginCode) {
-    return res.status(400).json({ error: 'phone and loginCode are required' });
+  if (!fullName || !cleanedPhone) {
+    return res.status(400).json({ error: 'fullName and phone are required' });
   }
 
   const db = readDb();
   const customer = findCustomerByPhone(db, cleanedPhone);
-  if (!customer || customer.loginCode !== loginCode) {
-    return res.status(401).json({ error: 'Invalid login code' });
+  if (!customer || !fullNamesMatch(customer.fullName, fullName)) {
+    return res.status(401).json({ error: 'Invalid name or phone number. Please check your details or register first.' });
   }
 
   customer.loginToken = generateCustomerToken();
@@ -1350,8 +1318,7 @@ app.get('/api/customer/me', requireCustomer, (req, res) => {
       createdAt: customer.createdAt,
       lastActivityAt: customer.lastActivityAt
     },
-    payments: customerPayments,
-    balances: db.finance?.balances || { collections: 0, operations: 0, savings: 0 }
+    payments: customerPayments
   });
 });
 

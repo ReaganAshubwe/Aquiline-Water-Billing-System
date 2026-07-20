@@ -27,12 +27,9 @@ function formatMoney(value) {
   return `KES ${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function renderAccount(customer, payments, balances) {
+function renderAccount(customer, payments) {
   document.getElementById('accountPanel').classList.remove('hidden');
   document.getElementById('customerSummary').textContent = `${customer.fullName} • ${customer.phone}`;
-  document.getElementById('balanceCollections').textContent = formatMoney(balances.collections);
-  document.getElementById('balanceOperations').textContent = formatMoney(balances.operations);
-  document.getElementById('balanceSavings').textContent = formatMoney(balances.savings);
 
   const tbody = document.getElementById('paymentsBody');
   tbody.innerHTML = '';
@@ -61,30 +58,11 @@ async function loadMe() {
     const result = await api('/api/customer/me', {
       headers: { Authorization: `Bearer ${token}` }
     });
-    renderAccount(result.customer, result.payments || [], result.balances || {});
+    renderAccount(result.customer, result.payments || []);
   } catch {
     sessionStorage.removeItem(CUSTOMER_TOKEN_STORAGE);
   }
 }
-
-document.getElementById('loginStartForm').addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const phone = new FormData(event.target).get('phone');
-  try {
-    const result = await api('/api/customer/login/start', {
-      method: 'POST',
-      body: JSON.stringify({ phone })
-    });
-    document.getElementById('loginStartResult').textContent = result.message;
-    if (result.loginCode) {
-      document.getElementById('loginStartResult').textContent += ` Code for testing: ${result.loginCode}`;
-    }
-    showToast(result.message);
-  } catch (error) {
-    document.getElementById('loginStartResult').textContent = error.message;
-    showToast(error.message, true);
-  }
-});
 
 document.getElementById('customerLoginForm').addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -92,7 +70,10 @@ document.getElementById('customerLoginForm').addEventListener('submit', async (e
   try {
     const result = await api('/api/customer/login', {
       method: 'POST',
-      body: JSON.stringify({ phone: formData.get('phone'), loginCode: formData.get('loginCode') })
+      body: JSON.stringify({
+        fullName: formData.get('fullName'),
+        phone: formData.get('phone')
+      })
     });
     sessionStorage.setItem(CUSTOMER_TOKEN_STORAGE, result.customer.loginToken);
     document.getElementById('loginResult').textContent = result.message;
