@@ -1,281 +1,80 @@
-# Aqualine Water Billing Company
+# Aqualine Water Billing System
 
-Web-based water billing system with customer registration, MPESA payment processing (live or simulated), token generation, SMS notifications, and an admin dashboard.
+A web-based water billing system featuring customer registration, Lipa Na M-PESA payment integration (simulated or live STK Push), water token generation, simulated SMS alerts, a ledger audit trail, and an administrative console with a maker-checker refund workflow.
 
-## Features
+---
 
-- Customer registration and account tracking
-- MPESA payment flow:
-  - STK push via Daraja (live mode)
-  - Simulation mode when credentials are not provided
-- Manual payment submission (receipt code) with admin approval/rejection
-- Automatic water token generation based on pricing rules
-- SMS token delivery:
-  - Africa's Talking integration (optional)
-  - Simulation mode fallback
-- Built-in treasury layer:
-  - Auto-settlement per confirmed payment (savings/operations split)
-  - Automatic daily settlement sweep for any paid-but-unsettled records
-  - Ledger entries for payment, settlement, top-up, and refund movements
-  - Operations-float management and manual top-ups from collections
-  - Refund tracking with partial/full refund state per payment
-  - Maker-checker refund workflow (request + separate approval)
-- Admin tools:
-  - Customer list and spend/activity summary
-  - Pending manual payment review
-  - Settlement balances and policy view
-  - Unsettled payment settlement trigger
-  - Refund issuing and refund history
-  - Integration status visibility
-  - Inactive account cleanup
+## 🚀 Local Setup Instructions
 
-## Tech Stack
+### 1. Prerequisites
+Ensure you have the following installed on your machine:
+- **Node.js** (v18+) & **npm**
 
-- Node.js
-- Express
-- Vanilla JavaScript frontend
-- JSON file storage (`data/db.json`)
-
-### MySQL / phpMyAdmin option
-
-The app can also use MySQL through phpMyAdmin with the database name `my_db`.
-
-1. Create a database named `my_db` in phpMyAdmin.
-2. Import [schema/my_db.sql](schema/my_db.sql).
-3. Copy [.env.example](.env.example) to `.env` and set the MySQL credentials.
-4. Start the app with `npm start`.
-
-The app expects table names with the `awbc_` prefix, such as `awbc_customers` and `awbc_payments`.
-
-## Quick Start
-
-### 0) Prerequisites
-
-- Node.js 18+ and npm
-- Git
-
-### 1) Clone the repository
-
-```bash
-git clone https://github.com/ReaganAshubwe/Aquiline-Water-Billing-System.git
-cd awbc
-```
-
-### 2) Install dependencies
-
+### 2. Installation
+Navigate to the project root directory and install dependencies:
 ```bash
 npm install
 ```
 
-### 3) Initialize local database (first run)
+### 3. Initialize Database (JSON or MySQL)
+- **Option A: Local JSON File (Default & Fastest)**
+  Initialize the local database file from the seed template:
+  ```bash
+  cp data/db.seed.json data/db.json
+  ```
+- **Option B: MySQL**
+  1. Create a database named `my_db` in your local MySQL instance (or phpMyAdmin).
+  2. Import the schema script: [schema/my_db.sql](schema/my_db.sql).
+  3. Fill in the MySQL connection parameters (`MYSQL_HOST`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`) in your `.env` file.
 
-```bash
-cp data/db.seed.json data/db.json
-```
-
-### 4) Create local environment file (optional but recommended)
-
+### 4. Configure Environment
+Create a local `.env` file:
 ```bash
 cp .env.example .env
 ```
+Open `.env` and fill in your credentials. If you leave them empty, the application will automatically run in simulation mode.
 
-If you skip this step, the app still runs with built-in defaults and simulation mode.
-
-### 5) Start the app
-
+### 5. Start the Application
+Launch the local Express server:
 ```bash
 npm start
 ```
 
-### 6) Open in browser
+### 6. Open in Browser
+- **Customer Portal**: [http://localhost:3000/customer.html](http://localhost:3000/customer.html)
+- **Admin Dashboard**: [http://localhost:3000/admin.html](http://localhost:3000/admin.html) *(Default local admin key: `AQUALINE_ADMIN_2026`)*
+- **Public Landing Page**: [http://localhost:3000](http://localhost:3000)
 
-- Customer UI: http://localhost:3000
-- Admin UI: http://localhost:3000/admin.html
+---
 
-## Screenshots
+## 📲 Testing MPESA STK Push Locally (ngrok)
 
-Place your screenshots in `docs/screenshots/` using the filenames below.
+To receive Lipa Na M-PESA prompts on your physical phone, Daraja needs a public HTTPS callback URL:
+
+1. **Start ngrok tunnel** on port 3000:
+   ```bash
+   ngrok http 3000
+   ```
+2. **Update your `.env`**:
+   Copy the generated HTTPS forwarding URL (e.g. `https://xxxx.ngrok-free.dev`) and update the callback setting:
+   ```env
+   MPESA_ENABLED=true
+   MPESA_CALLBACK_URL=https://xxxx.ngrok-free.dev/api/payments/mpesa/callback
+   ```
+3. **Restart the server** and initiate a payment using your registered Daraja phone number.
+
+---
+
+## 🖼️ Screenshots
 
 ### Homepage
-
 ![Homepage](docs/screenshots/homepage.png)
 
 ### Admin Page
-
 ![Admin Page](docs/screenshots/admin-page.png)
 
 ### MPESA Push Notification Page
-
 ![MPESA Push Notification Page](docs/screenshots/mpesa-push-page.png)
 
-## Admin Access
-
-- Default local admin key: `AQUALINE_ADMIN_2026`
-- Override with environment variable:
-
-```bash
-ADMIN_KEY=your_secure_key npm start
-```
-
-Admin APIs require `x-admin-key` header (or `Authorization: Bearer <key>`).
-
-## Environment Configuration
-
-Create a `.env` file in the project root (optional). If values are missing, the app falls back to simulation where supported.
-
-### MPESA (Daraja)
-
-Set these for live MPESA processing:
-
-- `MPESA_ENABLED=true`
-- `MPESA_ENV=sandbox` or `MPESA_ENV=live`
-- `MPESA_CONSUMER_KEY`
-- `MPESA_CONSUMER_SECRET`
-- `MPESA_SHORTCODE`
-- `MPESA_PASSKEY`
-- `MPESA_CALLBACK_URL`
-- `MPESA_TILL_NUMBER` (optional, shown in manual payment instructions)
-
-Callback endpoint:
-
-- `/api/payments/mpesa/callback`
-
-### ngrok for Local Development and GitHub Clones
-
-If you are testing MPESA locally, Daraja needs a public HTTPS callback URL. That is where ngrok is used.
-
-Important:
-
-- ngrok is only for local development and testing.
-- Do not commit your personal ngrok URL or auth token to GitHub.
-- Every developer who clones this repository can use their own ngrok account and their own local `.env` file.
-
-Typical local setup:
-
-```bash
-ngrok config add-authtoken YOUR_NGROK_TOKEN
-ngrok http 3000
-```
-
-Then copy the HTTPS forwarding URL and set:
-
-```env
-MPESA_CALLBACK_URL=https://your-ngrok-url/api/payments/mpesa/callback
-```
-
-After updating `.env`, restart the app.
-
-If the app is deployed to a real public server, ngrok is no longer needed. Use your deployed HTTPS domain instead.
-
-### SMS (Africa's Talking)
-
-Set these for live SMS sending:
-
-- `SMS_ENABLED=true`
-- `SMS_PROVIDER=africastalking`
-- `SMS_API_KEY`
-- `SMS_USERNAME`
-- `SMS_SENDER_ID` (optional)
-
-### Settlement Policy (Internal Buckets)
-
-Optional settings for treasury logic:
-
-- `SETTLEMENT_SAVINGS_PERCENT` (default: `70`)
-- `MIN_OPERATIONS_FLOAT` (default: `20000`)
-- `AUTO_SETTLEMENT_ENABLED` (default: `true`)
-- `AUTO_SETTLEMENT_HOUR_UTC` (default: `1`)
-- `APPROVER_KEY` (optional: dedicated key for refund approval)
-
-`operationsPercent` is computed as `100 - savingsPercent`.
-
-### Treasury Flow (Very Simple)
-
-1. Payment becomes `paid`.
-2. System splits it immediately:
-   - `SETTLEMENT_SAVINGS_PERCENT` goes to `savings`
-   - remainder goes to `operations`
-3. If a paid record somehow missed settlement, daily auto-sweep settles it at `AUTO_SETTLEMENT_HOUR_UTC`.
-4. Refunds are maker-checker:
-   - admin creates refund request (`pending_approval`)
-   - different approver approves request
-   - money is deducted from `operations`
-
-Example with defaults:
-
-- Payment `KES 1,000`
-- Savings `70%` -> `KES 700`
-- Operations `30%` -> `KES 300`
-
-## Pricing Model
-
-- `KES 10` per litre
-- `KES 10,000` per 1000 litres
-
-Litres are calculated using floor division based on selected unit type.
-
-## Core API Endpoints
-
-### Public
-
-- `GET /api/pricing`
-- `GET /api/payment-instructions`
-- `POST /api/customers/register`
-- `POST /api/payments/mpesa`
-- `POST /api/payments/manual-submit`
-- `POST /api/payments/mpesa/callback`
-
-### Admin (requires admin key)
-
-Auth and status:
-- `GET /api/admin/auth-check`
-- `GET /api/admin/integration-status`
-
-Customers and payments:
-- `GET /api/admin/customers`
-- `GET /api/admin/payments`
-- `GET /api/admin/payments/recent`
-- `GET /api/admin/payments/pending-manual`
-- `POST /api/admin/payments/:paymentId/manual-approve`
-- `POST /api/admin/payments/:paymentId/manual-reject`
-
-Treasury and settlement:
-- `GET /api/admin/finance/overview`
-- `GET /api/admin/finance/ledger`
-- `POST /api/admin/finance/top-up-operations`
-- `POST /api/admin/finance/settle-unsettled-payments`
-
-Refunds (maker-checker):
-- `GET /api/admin/refunds`
-- `POST /api/admin/refunds` (create request)
-- `GET /api/admin/refunds/pending`
-- `POST /api/admin/refunds/:refundId/approve` (checker approves)
-
-Maintenance:
-- `DELETE /api/admin/customers/inactive?years=2`
-
-## Data Storage
-
-This project uses a local JSON file database:
-
-- `data/db.json`
-
-Tracked seed template:
-
-- `data/db.seed.json`
-
-`data/db.json` is ignored by Git so local/runtime data is not committed.
-
-Best suited for local development and demos.
-
-Additional finance structures:
-
-- `finance` (balances + settlement policy)
-- `ledger` (immutable accounting events)
-- `settlements` (payment split records)
-- `refunds` (issued refund records)
-
-## Notes
-
-- If MPESA or SMS credentials are not configured, related flows automatically run in simulation mode.
-- Inactive customer cleanup defaults to accounts inactive for 2+ years.
+### Database Schema (phpMyAdmin)
+![Database Schema](docs/screenshots/database-schema.png)

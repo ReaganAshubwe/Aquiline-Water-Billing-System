@@ -1088,9 +1088,16 @@ async function getMpesaAccessToken() {
     }
   });
 
-  const data = await response.json();
-  if (!response.ok || !data.access_token) {
-    throw new Error('Failed to get MPESA access token');
+  const responseText = await response.text();
+  let data = null;
+  try {
+    data = JSON.parse(responseText);
+  } catch (err) {
+    throw new Error(`Failed to get MPESA access token: ${responseText || 'Invalid response format'}`);
+  }
+
+  if (!response.ok || !data?.access_token) {
+    throw new Error(`Failed to get MPESA access token: ${data?.errorMessage || 'Invalid credentials'}`);
   }
 
   return data.access_token;
@@ -1139,13 +1146,25 @@ async function processMpesaPayment(phone, amount) {
     body: JSON.stringify(stkPayload)
   });
 
-  const data = await response.json();
+  const responseText = await response.text();
+  let data = null;
+  try {
+    data = JSON.parse(responseText);
+  } catch (err) {
+    return {
+      success: false,
+      mode: 'live',
+      pending: false,
+      error: responseText || 'MPESA STK push failed (invalid response format)'
+    };
+  }
+
   if (!response.ok) {
     return {
       success: false,
       mode: 'live',
       pending: false,
-      error: data.errorMessage || 'MPESA STK push failed'
+      error: data?.errorMessage || responseText || 'MPESA STK push failed'
     };
   }
 
@@ -1206,13 +1225,25 @@ async function sendTokenSms(phone, message) {
     body: form.toString()
   });
 
-  const data = await response.json();
+  const responseText = await response.text();
+  let data = null;
+  try {
+    data = JSON.parse(responseText);
+  } catch (err) {
+    return {
+      success: false,
+      mode: 'live',
+      provider: SMS_PROVIDER,
+      error: responseText || 'SMS sending failed (invalid response format)'
+    };
+  }
+
   if (!response.ok) {
     return {
       success: false,
       mode: 'live',
       provider: SMS_PROVIDER,
-      error: data?.SMSMessageData?.Message || 'SMS sending failed'
+      error: data?.SMSMessageData?.Message || responseText || 'SMS sending failed'
     };
   }
 
