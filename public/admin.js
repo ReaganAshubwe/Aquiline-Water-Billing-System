@@ -166,9 +166,11 @@ async function adminApi(path, options = {}) {
   const apiBaseUrl = window.APP_CONFIG?.apiBaseUrl || '';
   const requestUrl = apiBaseUrl ? new URL(path, apiBaseUrl).toString() : path;
 
+  const { headers, ...restOptions } = options;
+
   const response = await fetch(requestUrl, {
-    headers: buildAdminHeaders(options.headers || {}),
-    ...options
+    headers: buildAdminHeaders(headers || {}),
+    ...restOptions
   });
 
   const data = await response.json();
@@ -534,9 +536,17 @@ async function loadRecentTransactions() {
       ? `<br><span class="text-xs text-amber-700">Refunded: ${formatMoney(tx.refundedAmount)} (${escapeHtml(tx.refundStatus || 'partial')})</span>`
       : '';
     const refundable = Math.max(Number(tx.amount || 0) - Number(tx.refundedAmount || 0), 0);
-    const refundAction = tx.status === 'paid' && refundable > 0
-      ? `<button data-action="refund" data-id="${escapeHtml(tx.id)}" data-max-refund="${refundable}" class="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 transition hover:bg-amber-100">Refund</button>`
-      : '<span class="text-xs text-slate-400">-</span>';
+    let refundAction = '<span class="text-xs text-slate-400">-</span>';
+    if (tx.status === 'paid' && refundable > 0) {
+      refundAction = `<button data-action="refund" data-id="${escapeHtml(tx.id)}" data-max-refund="${refundable}" class="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 transition hover:bg-amber-100">Refund</button>`;
+    } else if (tx.status === 'pending') {
+      refundAction = `
+        <div class="flex flex-col gap-1 md:flex-row">
+          <button data-action="simulate-success" data-id="${escapeHtml(tx.id)}" class="rounded-lg border border-emerald-300 bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-800 transition hover:bg-emerald-100">Simulate Success</button>
+          <button data-action="simulate-failure" data-id="${escapeHtml(tx.id)}" class="rounded-lg border border-rose-300 bg-rose-50 px-2 py-1 text-[10px] font-semibold text-rose-800 transition hover:bg-rose-100">Simulate Failure</button>
+        </div>
+      `;
+    }
 
     const tr = document.createElement('tr');
     tr.className = 'transition hover:bg-aqua-50/70';
@@ -762,24 +772,50 @@ document.querySelector('#pendingManualTable tbody').addEventListener('click', as
 });
 
 document.querySelector('#recentTransactionsTable tbody').addEventListener('click', async (event) => {
-  const actionButton = event.target.closest('button[data-action="refund"]');
-  if (!actionButton) {
-    return;
-  }
+  const refundBtn = event.target.closest('button[data-action="refund"]');
+  const successBtn = event.target.closest('button[data-action="simulate-success"]');
+  const failureBtn = event.target.closest('button[data-action="simulate-failure"]');
 
-  try {
-    setButtonLoading(actionButton, true, 'Refunding...');
-    const paymentId = actionButton.dataset.id;
-    const maxRefund = Number(actionButton.dataset.maxRefund || 0);
-    if (!paymentId) {
-      throw new Error('Missing payment ID for refund');
+  if (refundBtn) {
+    try {
+      setButtonLoading(refundBtn, true, 'Refunding...');
+      const paymentId = refundBtn.dataset.id;
+      const maxRefund = Number(refundBtn.dataset.maxRefund || 0);
+      if (!paymentId) {
+        throw new Error('Missing payment ID for refund');
+      }
+      await requestRefund(paymentId, maxRefund);
+    } catch (error) {
+      setText('adminResult', error.message, true);
+      showToast(error.message, true);
+    } finally {
+      setButtonLoading(refundBtn, false);
     }
-    await requestRefund(paymentId, maxRefund);
-  } catch (error) {
-    setText('adminResult', error.message, true);
-    showToast(error.message, true);
-  } finally {
-    setButtonLoading(actionButton, false);
+  } else if (successBtn || failureBtn) {
+    const btn = successBtn || failureBtn;
+    const isSuccess = Boolean(successBtn);
+    try {
+      setButtonLoading(btn, true, 'Simulating...');
+      const paymentId = btn.dataset.id;
+      if (!paymentId) {
+        throw new Error('Missing payment ID for simulation');
+      }
+      
+      const response = await adminApi(`/api/admin/payments/${paymentId}/simulate-callback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ success: isSuccess })
+      });
+      
+      showToast(response.message);
+      setText('adminResult', response.message);
+      await loadRecentTransactions();
+    } catch (error) {
+      setText('adminResult', error.message, true);
+      showToast(error.message, true);
+    } finally {
+      setButtonLoading(btn, false);
+    }
   }
 });
 

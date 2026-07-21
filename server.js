@@ -600,7 +600,7 @@ function scheduleDbPersist() {
   persistTimer = setTimeout(() => {
     persistTimer = null;
     persistPromise = persistPromise
-      .catch(() => {})
+      .catch(() => { })
       .then(() => persistDbToMysql())
       .catch((error) => {
         console.error(`Failed to persist database to MySQL: ${error.message}`);
@@ -1065,10 +1065,10 @@ function generateTokenCode() {
 function hasMpesaConfig() {
   return Boolean(
     MPESA_CONSUMER_KEY &&
-      MPESA_CONSUMER_SECRET &&
-      MPESA_SHORTCODE &&
-      MPESA_PASSKEY &&
-      MPESA_CALLBACK_URL
+    MPESA_CONSUMER_SECRET &&
+    MPESA_SHORTCODE &&
+    MPESA_PASSKEY &&
+    MPESA_CALLBACK_URL
   );
 }
 
@@ -1686,6 +1686,41 @@ app.post('/api/admin/payments/:paymentId/manual-reject', (req, res) => {
   writeDb(db);
 
   return res.json({ message: 'Manual payment rejected.', payment: paymentRecord });
+});
+
+app.post('/api/admin/payments/:paymentId/simulate-callback', async (req, res) => {
+  const { paymentId } = req.params;
+  const { success } = req.body;
+
+  try {
+    const db = readDb();
+    const paymentRecord = db.payments.find((p) => p.id === paymentId);
+
+    if (!paymentRecord) {
+      return res.status(404).json({ error: 'Payment record not found' });
+    }
+
+    if (paymentRecord.status !== 'pending') {
+      return res.status(400).json({ error: 'Only pending payments can have their callbacks simulated' });
+    }
+
+    paymentRecord.updatedAt = nowIso();
+
+    if (success === false) {
+      paymentRecord.status = 'failed';
+      paymentRecord.failureReason = 'Simulated payment failure (cancelled by user)';
+      writeDb(db);
+      return res.json({ message: 'Callback simulated as FAILED successfully.', payment: paymentRecord });
+    }
+
+    const mockReceipt = 'MOCK' + crypto.randomBytes(4).toString('hex').toUpperCase();
+    await finalizeSuccessfulPayment(db, paymentRecord, mockReceipt);
+    writeDb(db);
+
+    return res.json({ message: 'Callback simulated as SUCCESS successfully. Token generated.', payment: paymentRecord });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to simulate callback' });
+  }
 });
 
 app.get('/api/admin/finance/overview', (req, res) => {
