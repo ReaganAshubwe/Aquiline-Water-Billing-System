@@ -1,80 +1,155 @@
-# Aqualine Water Billing System
+# 💧 Aqualine Water Billing System
 
-A web-based water billing system featuring customer registration, Lipa Na M-PESA payment integration (simulated or live STK Push), water token generation, simulated SMS alerts, a ledger audit trail, and an administrative console with a maker-checker refund workflow.
+A modern, full-stack automated water billing and token dispensing platform. Built with Node.js/Express, MySQL (with local JSON fallback), M-Pesa Daraja STK Push, Google Gmail OTP Authentication, and Python ReportLab PDF statement generation.
 
 ---
 
-## 🚀 Local Setup Instructions
+## ✨ Key Features
 
-### 1. Prerequisites
-Ensure you have the following installed on your machine:
-- **Node.js** (v18+) & **npm**
+1. **🔐 Google Gmail OTP Authentication**:
+   - Customers log in securely using **6-digit one-time passcodes (OTP)** sent directly to their Gmail inbox.
+   - Dual login options: **📧 Gmail OTP Code** or **👤 Name + Phone**.
+   - Branded HTML email receipts for token purchases and account access.
 
-### 2. Installation
-Navigate to the project root directory and install dependencies:
+2. **📱 Kenyan Mobile Validation & Anti-Dummy Protection**:
+   - Strict validation for Kenyan phone numbers (`07XXXXXXXX` / `01XXXXXXXX` and `+254...`).
+   - Anti-dummy algorithms block repeated numbers (`0000000000`, `0700000000`) and sequential test strings.
+   - Automatic canonical formatting for seamless M-Pesa STK push prompts.
+
+3. **📄 Downloadable PDF Account Statements**:
+   - Customers and administrators can download official account statements in PDF format with letterhead, summary stats, token history, and dispute records.
+
+4. **❓ Interactive Help & FAQs Widget**:
+   - Floating Help button on all customer-facing pages.
+   - Live search FAQs, instant water cost calculator, and support inquiry submission.
+
+5. **💳 Lipa Na M-PESA Integration (Daraja STK Push)**:
+   - Automated STK Push prompts sent to the customer's phone.
+   - Instant 8-digit water token generation upon successful payment.
+   - Manual M-Pesa receipt verification bridge.
+
+6. **🏛️ Treasury Settlement & Maker-Checker Refunds**:
+   - Configurable automated fund allocation (70% Savings / 30% Operations).
+   - Complete double-entry ledger audit trail.
+   - Dispute management and administrative refund approvals.
+
+7. **🗄️ MySQL Database Persistence with Auto-Schema Migration**:
+   - Connection pool architecture with automatic schema creation.
+   - Resilient write-through memory cache with file fallback.
+
+---
+
+## 🚀 Quick Setup Guide (For Team Members)
+
+Follow these 4 simple steps to run the project locally:
+
+### 1. Clone & Install Dependencies
 ```bash
+git clone https://github.com/ReaganAshubwe/Aquiline-Water-Billing-System.git
+cd Aquiline-Water-Billing-System
 npm install
 ```
 
-### 3. Initialize Database (JSON or MySQL)
-- **Option A: Local JSON File (Default & Fastest)**
-  Initialize the local database file from the seed template:
-  ```bash
-  cp data/db.seed.json data/db.json
-  ```
-- **Option B: MySQL**
-  1. Create a database named `my_db` in your local MySQL instance (or phpMyAdmin).
-  2. Import the schema script: [schema/my_db.sql](schema/my_db.sql).
-  3. Fill in the MySQL connection parameters (`MYSQL_HOST`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`) in your `.env` file.
-
-### 4. Configure Environment
-Create a local `.env` file:
+### 2. Configure Environment Variables
+Copy the sample environment file:
 ```bash
 cp .env.example .env
 ```
-Open `.env` and fill in your credentials. If you leave them empty, the application will automatically run in simulation mode.
 
-### 5. Start the Application
-Launch the local Express server:
+Open `.env` in your editor and configure your settings:
+```env
+# Server
+PORT=3000
+ADMIN_KEY=AQUALINE_ADMIN_2026
+
+# Email / Gmail OTP Authentication (Optional: Leave blank for simulated mode)
+EMAIL_ENABLED=true
+EMAIL_SERVICE=gmail
+EMAIL_USER=your_email@gmail.com
+EMAIL_APP_PASSWORD=your_16_char_google_app_password
+EMAIL_FROM="Aqualine Water Billing <your_email@gmail.com>"
+
+# MySQL Configuration (Optional: Leave blank for local JSON file mode)
+MYSQL_HOST=127.0.0.1
+MYSQL_PORT=3306
+MYSQL_USER=root
+MYSQL_PASSWORD=
+MYSQL_DATABASE=my_db
+MYSQL_TABLE_PREFIX=awbc_
+```
+
+> 💡 **Tip:** If `EMAIL_USER` or `MYSQL_*` are left blank, the app will automatically run in **Simulation & Local File Mode** with zero setup needed!
+
+### 3. Initialize Local Database
+If you're not using MySQL, initialize the local JSON file database:
+```bash
+cp data/db.seed.json data/db.json
+```
+
+### 4. Start the Application
 ```bash
 npm start
 ```
 
-### 6. Open in Browser
-- **Customer Portal**: [http://localhost:3000/customer.html](http://localhost:3000/customer.html)
-- **Admin Dashboard**: [http://localhost:3000/admin.html](http://localhost:3000/admin.html) *(Default local admin key: `AQUALINE_ADMIN_2026`)*
-- **Public Landing Page**: [http://localhost:3000](http://localhost:3000)
+---
+
+## 🌐 Application URLs
+
+Once running, access the portals in your browser:
+
+| Portal | URL | Description |
+|---|---|---|
+| **Public Landing Page** | [http://localhost:3000](http://localhost:3000) | Buy tokens, register account, view pricing, FAQs |
+| **Customer Portal** | [http://localhost:3000/customer.html](http://localhost:3000/customer.html) | Gmail OTP login, view active tokens, download PDF statement |
+| **Admin Dashboard** | [http://localhost:3000/admin.html](http://localhost:3000/admin.html) | Treasury settlements, ledger, refund approvals, customer statements |
+
+*(Default Admin Access Key: `AQUALINE_ADMIN_2026`)*
 
 ---
 
-## 📲 Testing MPESA STK Push Locally (ngrok)
+## 📧 How to Set Up Real Gmail Sending
 
-To receive Lipa Na M-PESA prompts on your physical phone, Daraja needs a public HTTPS callback URL:
+To send real OTP codes and token receipts to customer Gmail inboxes:
 
-1. **Start ngrok tunnel** on port 3000:
+1. Open Google Account Security: **[https://myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)** *(requires 2-Step Verification enabled)*.
+2. Enter app name **`Aqualine`** and click **Create**.
+3. Copy the 16-character password generated by Google.
+4. Add it to your `.env` file:
+   ```env
+   EMAIL_USER=your_sending_email@gmail.com
+   EMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx
+   ```
+5. Restart your server (`npm start`).
+
+---
+
+## 📲 Testing M-Pesa STK Push Locally (ngrok)
+
+To receive real M-Pesa STK push prompts on your phone:
+1. Start an ngrok tunnel on port 3000:
    ```bash
    ngrok http 3000
    ```
-2. **Update your `.env`**:
-   Copy the generated HTTPS forwarding URL (e.g. `https://xxxx.ngrok-free.dev`) and update the callback setting:
+2. Copy your HTTPS forwarding URL into `.env`:
    ```env
    MPESA_ENABLED=true
-   MPESA_CALLBACK_URL=https://xxxx.ngrok-free.dev/api/payments/mpesa/callback
+   MPESA_CALLBACK_URL=https://your-ngrok-url.ngrok-free.dev/api/payments/mpesa/callback
    ```
-3. **Restart the server** and initiate a payment using your registered Daraja phone number.
+3. Restart the server and initiate an M-Pesa payment on the landing page.
 
 ---
 
-## 🖼️ Screenshots
+## 🛠️ Tech Stack
 
-### Homepage
-![Homepage](docs/screenshots/homepage.png)
+- **Backend**: Node.js, Express.js
+- **Frontend**: Vanilla HTML5, Modern CSS (Tailwind CSS CDN), Vanilla JavaScript
+- **Database**: MySQL 8+ (`mysql2/promise`) / Local JSON Store
+- **Authentication**: Google Gmail SMTP OTP (`nodemailer`) / Session Token
+- **PDF Engine**: Python 3 (`reportlab`)
+- **Payments**: Safaricom Daraja M-Pesa STK Push API
+- **SMS Gateway**: Africa's Talking API (with simulation mode)
 
-### Admin Page
-![Admin Page](docs/screenshots/admin-page.png)
+---
 
-### MPESA Push Notification Page
-![MPESA Push Notification Page](docs/screenshots/mpesa-push-page.png)
-
-### Database Schema (phpMyAdmin)
-![Database Schema](docs/screenshots/database-schema.png)
+## 📄 License
+This project is proprietary and maintained by Aqualine Water Billing Company.

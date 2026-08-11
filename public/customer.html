@@ -128,6 +128,13 @@
         </a>
         <nav class="hidden items-center gap-3 text-sm font-semibold text-aqua-800 md:flex">
           <a class="rounded-lg bg-aqua-700 px-3 py-1.5 text-white transition hover:bg-aqua-600" href="/">Customer Registration</a>
+          <button
+            type="button"
+            onclick="window.openHelpModal('guide')"
+            class="flex items-center gap-1.5 rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-bold text-sky-800 transition hover:bg-sky-100 dark:border-sky-700 dark:bg-slate-800 dark:text-sky-300"
+          >
+            <span>❓</span><span>Help & FAQs</span>
+          </button>
         </nav>
         <button
           id="themeToggle"
@@ -157,16 +164,100 @@
         <div class="rounded-3xl border border-white/70 bg-white/90 p-6 shadow-soft md:p-8">
           <div class="mb-5 flex items-center justify-between">
             <h2 class="text-xl font-bold text-aqua-900 md:text-2xl">Customer Login</h2>
-            <span class="rounded-lg bg-aqua-100 px-3 py-1 text-xs font-semibold text-aqua-700">Name + Phone</span>
+            <span class="rounded-lg bg-sky-100 px-3 py-1 text-xs font-bold text-sky-800">Secure Access</span>
           </div>
-          <form id="customerLoginForm" class="space-y-4">
+
+          <!-- Login Mode Tabs -->
+          <div class="mb-5 flex rounded-xl bg-aqua-50/80 p-1 border border-aqua-200">
+            <button
+              id="tabOtpBtn"
+              type="button"
+              class="flex-1 rounded-lg bg-white py-2 text-xs font-bold text-aqua-900 shadow-sm transition"
+            >
+              📧 Gmail OTP Code
+            </button>
+            <button
+              id="tabDirectBtn"
+              type="button"
+              class="flex-1 rounded-lg py-2 text-xs font-semibold text-slate-600 transition hover:text-aqua-900"
+            >
+              👤 Name + Phone
+            </button>
+          </div>
+
+          <!-- Form 1: Gmail OTP Login -->
+          <div id="otpLoginFormWrap" class="space-y-4">
+            <div id="otpStep1">
+              <label class="block text-sm font-semibold text-aqua-800">
+                Registered Email or Phone Number
+                <input
+                  id="otpIdentifierInput"
+                  type="text"
+                  required
+                  class="mt-2 w-full rounded-xl border border-aqua-200 bg-white px-4 py-3 outline-none transition focus:border-aqua-500 focus:ring-4 focus:ring-aqua-200"
+                  placeholder="e.g. name@gmail.com or 0712345678"
+                />
+              </label>
+              <button
+                id="sendOtpBtn"
+                type="button"
+                class="mt-4 w-full rounded-xl bg-gradient-to-r from-sky-600 to-cyan-700 px-5 py-3 font-bold text-white shadow-soft transition hover:-translate-y-0.5 hover:from-sky-500 hover:to-cyan-600"
+              >
+                Send Verification Code
+              </button>
+            </div>
+
+            <div id="otpStep2" class="hidden space-y-4">
+              <div class="rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
+                <span id="otpSentNotice">A 6-digit verification code has been sent to your email.</span>
+              </div>
+
+              <!-- Development OTP Notification Box -->
+              <div id="devOtpBox" class="hidden rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 p-3.5 text-center">
+                <p class="text-xs font-bold text-amber-900">🧪 Development Mode (Simulated Email)</p>
+                <p class="text-xs text-amber-800 mt-1">Your OTP Code is: <span id="devOtpVal" class="font-mono text-base font-black text-amber-950"></span></p>
+                <button id="devAutoFillBtn" type="button" class="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-amber-700">⚡ Auto-fill Code</button>
+              </div>
+
+              <label class="block text-sm font-semibold text-aqua-800">
+                Enter 6-Digit OTP Code
+                <input
+                  id="otpCodeInput"
+                  type="text"
+                  maxlength="6"
+                  required
+                  class="mt-2 w-full text-center text-xl font-bold tracking-widest rounded-xl border border-aqua-200 bg-white px-4 py-3 outline-none transition focus:border-aqua-500 focus:ring-4 focus:ring-aqua-200 font-mono"
+                  placeholder="------"
+                />
+              </label>
+              <button
+                id="verifyOtpBtn"
+                type="button"
+                class="w-full rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 px-5 py-3 font-bold text-white shadow-soft transition hover:-translate-y-0.5 hover:from-emerald-500 hover:to-teal-600"
+              >
+                Verify & Login to Portal
+              </button>
+              <div class="flex items-center justify-between text-xs">
+                <button id="resendOtpBtn" type="button" class="text-sky-700 font-bold hover:underline">
+                  Resend Code
+                </button>
+                <button id="changeIdentifierBtn" type="button" class="text-slate-500 hover:underline">
+                  Change Email / Phone
+                </button>
+              </div>
+            </div>
+            <p id="otpLoginResult" class="min-h-6 text-sm font-semibold"></p>
+          </div>
+
+          <!-- Form 2: Direct Name + Phone Login -->
+          <form id="customerLoginForm" class="hidden space-y-4">
             <label class="block text-sm font-semibold text-aqua-800">
               Full Name
               <input name="fullName" type="text" required class="mt-2 w-full rounded-xl border border-aqua-200 bg-white px-4 py-3 outline-none transition focus:border-aqua-500 focus:ring-4 focus:ring-aqua-200" placeholder="As registered on your account" />
             </label>
             <label class="block text-sm font-semibold text-aqua-800">
               Phone Number
-              <input name="phone" type="text" required class="mt-2 w-full rounded-xl border border-aqua-200 bg-white px-4 py-3 outline-none transition focus:border-aqua-500 focus:ring-4 focus:ring-aqua-200" placeholder="e.g 07XXXXXXXX" />
+              <input name="phone" type="tel" required class="mt-2 w-full rounded-xl border border-aqua-200 bg-white px-4 py-3 outline-none transition focus:border-aqua-500 focus:ring-4 focus:ring-aqua-200" placeholder="e.g. 0712345678 or 0112345678" />
             </label>
             <button class="w-full rounded-xl bg-gradient-to-r from-aqua-600 to-aqua-700 px-5 py-3 font-bold text-white shadow-soft transition hover:-translate-y-0.5 hover:from-aqua-500 hover:to-aqua-600" type="submit">Login</button>
             <p id="loginResult" class="min-h-6 text-sm font-semibold"></p>
@@ -175,13 +266,53 @@
       </section>
 
       <section id="accountPanel" class="hidden rounded-3xl border border-white/70 bg-white/90 p-6 shadow-soft md:p-8">
-        <div class="mb-4 flex items-center justify-between gap-4">
+        <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 class="text-xl font-bold text-aqua-900 md:text-2xl">My Account</h2>
             <p id="customerSummary" class="text-sm text-slate-600"></p>
           </div>
-          <button id="logoutButton" class="rounded-lg border border-aqua-300 bg-aqua-50 px-3 py-2 text-sm font-semibold text-aqua-800 transition hover:bg-aqua-100">Logout</button>
+          <div class="flex flex-wrap items-center gap-3">
+            <button
+              id="downloadPdfBtn"
+              type="button"
+              class="flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-600 to-cyan-700 px-4 py-2 text-xs font-bold text-white shadow-soft transition hover:-translate-y-0.5 hover:from-sky-500 hover:to-cyan-600 active:translate-y-0"
+            >
+              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              <span>Download PDF Statement</span>
+            </button>
+            <button id="logoutButton" class="rounded-xl border border-aqua-300 bg-aqua-50 px-4 py-2 text-xs font-bold text-aqua-800 transition hover:bg-aqua-100">
+              Logout
+            </button>
+          </div>
         </div>
+
+        <!-- KPI Summary Cards -->
+        <div class="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div class="rounded-2xl border border-aqua-100 bg-aqua-50/60 p-3.5 dark:border-slate-700 dark:bg-slate-800/60">
+            <div class="text-[11px] font-bold text-aqua-700 dark:text-sky-400 uppercase tracking-wider">Total Spent</div>
+            <div id="statTotalSpent" class="text-lg font-black text-slate-800 dark:text-slate-100 mt-1">KES 0.00</div>
+          </div>
+          <div class="rounded-2xl border border-aqua-100 bg-aqua-50/60 p-3.5 dark:border-slate-700 dark:bg-slate-800/60">
+            <div class="text-[11px] font-bold text-aqua-700 dark:text-sky-400 uppercase tracking-wider">Water Bought</div>
+            <div id="statTotalLitres" class="text-lg font-black text-slate-800 dark:text-slate-100 mt-1">0 Litres</div>
+          </div>
+          <div class="rounded-2xl border border-aqua-100 bg-aqua-50/60 p-3.5 dark:border-slate-700 dark:bg-slate-800/60">
+            <div class="text-[11px] font-bold text-aqua-700 dark:text-sky-400 uppercase tracking-wider">Total Payments</div>
+            <div id="statTotalTx" class="text-lg font-black text-slate-800 dark:text-slate-100 mt-1">0</div>
+          </div>
+          <div class="rounded-2xl border border-aqua-100 bg-aqua-50/60 p-3.5 dark:border-slate-700 dark:bg-slate-800/60">
+            <div class="text-[11px] font-bold text-aqua-700 dark:text-sky-400 uppercase tracking-wider">Active Tokens</div>
+            <div id="statActiveTokens" class="text-lg font-black text-slate-800 dark:text-slate-100 mt-1">0</div>
+          </div>
+        </div>
+
+        <div class="mb-3 flex items-center justify-between">
+          <h3 class="text-sm font-bold text-aqua-900 dark:text-slate-200">Transaction & Token History</h3>
+          <span class="text-xs text-slate-500">Live account records</span>
+        </div>
+
         <div class="overflow-hidden rounded-2xl border border-aqua-100">
           <table class="min-w-full text-left text-sm">
             <thead class="bg-aqua-50 text-aqua-900">
@@ -191,6 +322,7 @@
                 <th class="px-4 py-3">Status</th>
                 <th class="px-4 py-3">Token</th>
                 <th class="px-4 py-3">Receipt</th>
+                <th class="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody id="paymentsBody" class="divide-y divide-aqua-100 bg-white"></tbody>
@@ -310,6 +442,7 @@
 
     <div id="toast" class="pointer-events-none fixed right-4 top-20 z-50 rounded-xl bg-slate-900/90 px-4 py-3 text-sm font-medium text-white opacity-0 shadow-soft transition-all duration-300"></div>
     <script src="customer-portal.js"></script>
+    <script src="/help-widget.js"></script>
     <script>
       const themeKey = 'aqualineTheme';
       const themeToggle = document.getElementById('themeToggle');

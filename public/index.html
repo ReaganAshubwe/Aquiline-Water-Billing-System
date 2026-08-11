@@ -182,6 +182,13 @@
           <a class="transition hover:text-aqua-600" href="#register">Register</a>
           <a class="transition hover:text-aqua-600" href="#about">About Us</a>
           <a class="transition hover:text-aqua-600" href="#contact">Contacts</a>
+          <button
+            type="button"
+            onclick="window.openHelpModal('guide')"
+            class="flex items-center gap-1.5 rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-bold text-sky-800 transition hover:bg-sky-100 dark:border-sky-700 dark:bg-slate-800 dark:text-sky-300"
+          >
+            <span>❓</span><span>Help & FAQs</span>
+          </button>
           <a class="rounded-lg bg-aqua-700 px-3 py-1.5 text-white transition hover:bg-aqua-600" href="/customer.html">Customer Login</a>
         </nav>
         <button
@@ -212,9 +219,15 @@
         <nav class="grid gap-2 text-sm font-semibold text-aqua-800">
           <a class="mobile-nav-link rounded-lg px-3 py-2 transition hover:bg-aqua-50" href="#home">Home</a>
           <a class="mobile-nav-link rounded-lg px-3 py-2 transition hover:bg-aqua-50" href="#register">Register</a>
-
           <a class="mobile-nav-link rounded-lg px-3 py-2 transition hover:bg-aqua-50" href="#about">About Us</a>
           <a class="mobile-nav-link rounded-lg px-3 py-2 transition hover:bg-aqua-50" href="#contact">Contacts</a>
+          <button
+            type="button"
+            onclick="window.openHelpModal('guide')"
+            class="flex items-center justify-center gap-1.5 rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-xs font-bold text-sky-800 transition hover:bg-sky-100"
+          >
+            <span>❓</span><span>Help & FAQs</span>
+          </button>
           <a class="rounded-lg bg-aqua-700 px-3 py-2 text-center text-white transition hover:bg-aqua-600" href="/customer.html">Customer Login</a>
           <button id="themeToggleMobile" class="theme-toggle-btn rounded-lg border border-aqua-300 bg-aqua-50 px-3 py-2 text-aqua-800 transition hover:bg-aqua-100" type="button">
             <span class="theme-icon" aria-hidden="true">🌙</span><span class="theme-label">Dark Mode</span>
@@ -246,31 +259,48 @@
           <h2 class="text-xl font-bold text-aqua-900 md:text-2xl">Customer Registration</h2>
           <span class="rounded-lg bg-aqua-100 px-3 py-1 text-xs font-semibold text-aqua-700">Fast Onboarding</span>
         </div>
-        <form id="registerForm" class="grid gap-4 md:grid-cols-2">
-          <label class="space-y-2 text-sm font-semibold text-aqua-800">
+        <form id="registerForm" class="grid gap-4 md:grid-cols-3">
+          <label class="space-y-1.5 text-sm font-semibold text-aqua-800">
             Full Name
             <input
               class="w-full rounded-xl border border-aqua-200 bg-white px-4 py-3 outline-none transition focus:border-aqua-500 focus:ring-4 focus:ring-aqua-200"
               type="text"
               name="fullName"
+              placeholder="e.g. Jane Wanjiku"
+              minlength="3"
               required
             />
           </label>
-          <label class="space-y-2 text-sm font-semibold text-aqua-800">
-            Phone Number
+          <label class="space-y-1.5 text-sm font-semibold text-aqua-800">
+            Phone Number (M-Pesa)
             <input
               class="w-full rounded-xl border border-aqua-200 bg-white px-4 py-3 outline-none transition focus:border-aqua-500 focus:ring-4 focus:ring-aqua-200"
-              type="text"
+              type="tel"
               name="phone"
-              placeholder="e.g 07XXXXXXXX"
+              id="registerPhoneInput"
+              placeholder="e.g. 0712345678 or 0112345678"
+              pattern="^(?:254|\+254|0)?([17][0-9]{8})$"
+              maxlength="13"
               required
             />
+            <span class="block text-[11px] font-normal text-slate-500 dark:text-slate-400">10-digit number (07XX / 01XX)</span>
+          </label>
+          <label class="space-y-1.5 text-sm font-semibold text-aqua-800">
+            Email Address (Gmail / OTP)
+            <input
+              class="w-full rounded-xl border border-aqua-200 bg-white px-4 py-3 outline-none transition focus:border-aqua-500 focus:ring-4 focus:ring-aqua-200"
+              type="email"
+              name="email"
+              placeholder="e.g. name@gmail.com"
+              required
+            />
+            <span class="block text-[11px] font-normal text-slate-500 dark:text-slate-400">Receives OTP codes & token receipts</span>
           </label>
           <button
             type="submit"
-            class="md:col-span-2 rounded-xl bg-gradient-to-r from-aqua-600 to-aqua-700 px-5 py-3 font-bold text-white shadow-soft transition hover:-translate-y-0.5 hover:from-aqua-500 hover:to-aqua-600"
+            class="md:col-span-3 rounded-xl bg-gradient-to-r from-aqua-600 to-aqua-700 px-5 py-3 font-bold text-white shadow-soft transition hover:-translate-y-0.5 hover:from-aqua-500 hover:to-aqua-600"
           >
-            Register Customer
+            Register & Send Verification Code
           </button>
         </form>
         <p id="registerResult" class="mt-4 min-h-6 text-sm font-semibold"></p>
@@ -323,5 +353,6 @@
     </script>
 
     <script src="customer.js"></script>
+    <script src="/help-widget.js"></script>
   </body>
 </html>

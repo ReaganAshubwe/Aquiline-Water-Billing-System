@@ -143,14 +143,54 @@ async function loadPricing() {
   }
 }
 
+function validateClientPhone(rawPhone) {
+  if (!rawPhone) return 'Phone number is required.';
+  const cleaned = String(rawPhone).trim().replace(/[\s\-\(\)\.]/g, '');
+  if (!/^\+?\d+$/.test(cleaned)) return 'Phone number must only contain digits.';
+
+  const digits = cleaned.replace(/^\+/, '');
+  let core = '';
+  if (digits.startsWith('254') && digits.length === 12) core = digits.slice(3);
+  else if (digits.startsWith('0') && digits.length === 10) core = digits.slice(1);
+  else if (digits.length === 9 && (digits.startsWith('7') || digits.startsWith('1'))) core = digits;
+  else return 'Please enter a valid 10-digit Kenyan mobile number (e.g. 07XXXXXXXX or 01XXXXXXXX).';
+
+  if (!/^[17]\d{8}$/.test(core)) return 'Kenyan mobile numbers must start with 07 or 01.';
+  const fullLocal = `0${core}`;
+  if (/^(\d)\1+$/.test(fullLocal) || /^(\d)\1+$/.test(core)) return 'Repeated dummy numbers (e.g. 0000000000) are not permitted.';
+  if (new Set(core.split('')).size < 3) return 'Please enter a genuine active phone number.';
+
+  return null;
+}
+
 document.getElementById('registerForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   const submitBtn = event.target.querySelector('button[type="submit"]');
   const formData = new FormData(event.target);
-  const payload = {
-    fullName: formData.get('fullName'),
-    phone: formData.get('phone')
-  };
+  const fullName = String(formData.get('fullName') || '').trim();
+  const phone = String(formData.get('phone') || '').trim();
+  const email = String(formData.get('email') || '').trim().toLowerCase();
+
+  if (fullName.length < 3) {
+    setText('registerResult', 'Full Name must be at least 3 characters.', true);
+    showToast('Full Name must be at least 3 characters', true);
+    return;
+  }
+
+  const phoneError = validateClientPhone(phone);
+  if (phoneError) {
+    setText('registerResult', phoneError, true);
+    showToast(phoneError, true);
+    return;
+  }
+
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    setText('registerResult', 'Please enter a valid email address.', true);
+    showToast('Please enter a valid email address', true);
+    return;
+  }
+
+  const payload = { fullName, phone, email };
 
   try {
     setButtonLoading(submitBtn, true, 'Registering...');
@@ -158,8 +198,10 @@ document.getElementById('registerForm').addEventListener('submit', async (event)
       method: 'POST',
       body: JSON.stringify(payload)
     });
-    setText('registerResult', `Registered: ${result.customer.fullName} (${result.customer.phone})`);
-    showToast('Customer registered successfully');
+    const emailNotice = result.email ? ` • OTP Sent to: ${result.email}` : '';
+    const codeNotice = result.loginCode ? ` • Code: ${result.loginCode}` : '';
+    setText('registerResult', `Registered: ${result.customer.fullName} (${result.customer.phone})${codeNotice}${emailNotice}`);
+    showToast(`Registered successfully! OTP sent to ${result.email || result.customer.phone}`);
     event.target.reset();
   } catch (error) {
     setText('registerResult', error.message, true);

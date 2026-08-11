@@ -2,6 +2,10 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { execFile } = require('child_process');
+const util = require('util');
+const execFilePromise = util.promisify(execFile);
+const nodemailer = require('nodemailer');
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 
@@ -9,6 +13,12 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const ADMIN_KEY = process.env.ADMIN_KEY || 'AQUALINE_ADMIN_2026';
 const APPROVER_KEY = process.env.APPROVER_KEY || '';
+
+const EMAIL_ENABLED = process.env.EMAIL_ENABLED !== 'false';
+const EMAIL_SERVICE = process.env.EMAIL_SERVICE || 'gmail';
+const EMAIL_USER = process.env.EMAIL_USER || '';
+const EMAIL_APP_PASSWORD = process.env.EMAIL_APP_PASSWORD || '';
+const EMAIL_FROM = process.env.EMAIL_FROM || `Aqualine Water Billing <${EMAIL_USER || 'support@aqualine.co.ke'}>`;
 
 const MPESA_ENABLED = process.env.MPESA_ENABLED === 'true';
 const MPESA_ENV = process.env.MPESA_ENV || 'sandbox';
@@ -115,11 +125,16 @@ function requireApprover(req, res, next) {
 
 function parseAuthorizationToken(req) {
   const authorization = req.get('authorization') || '';
-  if (!authorization.startsWith('Bearer ')) {
-    return '';
+  if (authorization.startsWith('Bearer ')) {
+    return authorization.slice(7).trim();
   }
-
-  return authorization.slice(7).trim();
+  if (req.query?.token) {
+    return String(req.query.token).trim();
+  }
+  if (req.get('x-customer-token')) {
+    return req.get('x-customer-token').trim();
+  }
+  return '';
 }
 
 function requireCustomer(req, res, next) {
@@ -208,8 +223,11 @@ async function ensureMysqlSchema() {
       id CHAR(36) NOT NULL PRIMARY KEY,
       full_name VARCHAR(255) NOT NULL,
       phone VARCHAR(32) NOT NULL UNIQUE,
+      email VARCHAR(255) DEFAULT NULL,
       login_code VARCHAR(32) DEFAULT NULL,
       login_token VARCHAR(64) DEFAULT NULL,
+      email_otp VARCHAR(16) DEFAULT NULL,
+      otp_expires_at DATETIME(3) DEFAULT NULL,
       created_at DATETIME(3) NOT NULL,
       updated_at DATETIME(3) NOT NULL,
       last_activity_at DATETIME(3) NOT NULL,
@@ -218,8 +236,11 @@ async function ensureMysqlSchema() {
   `);
 
   const customerColumnChecks = [
+    ['email', 'VARCHAR(255) DEFAULT NULL'],
     ['login_code', 'VARCHAR(32) DEFAULT NULL'],
-    ['login_token', 'VARCHAR(64) DEFAULT NULL']
+    ['login_token', 'VARCHAR(64) DEFAULT NULL'],
+    ['email_otp', 'VARCHAR(16) DEFAULT NULL'],
+    ['otp_expires_at', 'DATETIME(3) DEFAULT NULL']
   ];
 
   for (const [columnName, columnDefinition] of customerColumnChecks) {
@@ -365,8 +386,11 @@ async function loadDbFromMysql() {
       id: row.id,
       fullName: row.full_name,
       phone: row.phone,
+      email: row.email || '',
       loginCode: row.login_code || '',
       loginToken: row.login_token || '',
+      emailOtp: row.email_otp || '',
+      otpExpiresAt: row.otp_expires_at instanceof Date ? row.otp_expires_at.toISOString() : (row.otp_expires_at || ''),
       createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
       updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
       lastActivityAt: row.last_activity_at instanceof Date ? row.last_activity_at.toISOString() : row.last_activity_at
@@ -458,20 +482,40 @@ async function persistDbToMysql() {
     await mysqlPool.query(`DELETE FROM \`${MYSQL_TABLES.finance}\``);
 
     if (db.customers.length > 0) {
-      await mysqlPool.query(
-        `INSERT INTO \`${MYSQL_TABLES.customers}\` (id, full_name, phone, login_code, login_token, created_at, updated_at, last_activity_at)
-         VALUES ?`,
-        [db.customers.map((customer) => [
-          customer.id,
-          customer.fullName,
-          customer.phone,
-          customer.loginCode || null,
-          customer.loginToken || null,
-          customer.createdAt ? new Date(customer.createdAt) : new Date(),
-          customer.updatedAt ? new Date(customer.updatedAt) : new Date(),
-          customer.lastActivityAt ? new Date(customer.lastActivityAt) : new Date()
-        ])]
-      );
+      const seenPhones = new Set();
+      const uniqueBatch = [];
+      for (const customer of db.customers) {
+        if (!customer || !customer.phone) continue;
+        const validation = validateCustomerPhone(customer.phone);
+        const canonical = validation.isValid ? validation.localFormat : normalizePhone(customer.phone);
+        customer.phone = canonical;
+
+        if (!seenPhones.has(canonical)) {
+          seenPhones.add(canonical);
+          uniqueBatch.push(customer);
+        }
+      }
+
+      if (uniqueBatch.length > 0) {
+        await mysqlPool.query(
+          `INSERT INTO \`${MYSQL_TABLES.customers}\` (id, full_name, phone, email, login_code, login_token, email_otp, otp_expires_at, created_at, updated_at, last_activity_at)
+           VALUES ?
+           ON DUPLICATE KEY UPDATE full_name = VALUES(full_name), email = VALUES(email), login_code = VALUES(login_code), login_token = VALUES(login_token), email_otp = VALUES(email_otp), otp_expires_at = VALUES(otp_expires_at), updated_at = VALUES(updated_at), last_activity_at = VALUES(last_activity_at)`,
+          [uniqueBatch.map((customer) => [
+            customer.id,
+            customer.fullName,
+            customer.phone,
+            customer.email || null,
+            customer.loginCode || null,
+            customer.loginToken || null,
+            customer.emailOtp || null,
+            customer.otpExpiresAt ? new Date(customer.otpExpiresAt) : null,
+            customer.createdAt ? new Date(customer.createdAt) : new Date(),
+            customer.updatedAt ? new Date(customer.updatedAt) : new Date(),
+            customer.lastActivityAt ? new Date(customer.lastActivityAt) : new Date()
+          ])]
+        );
+      }
     }
 
     if (db.payments.length > 0) {
@@ -719,7 +763,53 @@ function createLedgerEntry({ type, amount, direction, account, referenceId, note
 function ensureDbSchema(db) {
   if (!Array.isArray(db.customers)) {
     db.customers = [];
+  } else {
+    const uniqueCustomers = [];
+    const phoneToPrimaryId = new Map();
+    const oldIdToPrimaryId = new Map();
+
+    for (const c of db.customers) {
+      if (!c || !c.phone) continue;
+      const validation = validateCustomerPhone(c.phone);
+      const canonicalPhone = validation.isValid ? validation.localFormat : normalizePhone(c.phone);
+      c.phone = canonicalPhone;
+
+      if (!phoneToPrimaryId.has(canonicalPhone)) {
+        phoneToPrimaryId.set(canonicalPhone, c.id);
+        uniqueCustomers.push(c);
+      } else {
+        const primaryId = phoneToPrimaryId.get(canonicalPhone);
+        oldIdToPrimaryId.set(c.id, primaryId);
+        const primaryCust = uniqueCustomers.find((u) => u.id === primaryId);
+        if (primaryCust) {
+          if (c.fullName && !primaryCust.fullName) primaryCust.fullName = c.fullName;
+          if (c.loginCode && !primaryCust.loginCode) primaryCust.loginCode = c.loginCode;
+          if (c.loginToken && !primaryCust.loginToken) primaryCust.loginToken = c.loginToken;
+        }
+      }
+    }
+
+    db.customers = uniqueCustomers;
+
+    if (oldIdToPrimaryId.size > 0) {
+      if (Array.isArray(db.payments)) {
+        for (const p of db.payments) {
+          if (oldIdToPrimaryId.has(p.customerId)) p.customerId = oldIdToPrimaryId.get(p.customerId);
+        }
+      }
+      if (Array.isArray(db.refunds)) {
+        for (const r of db.refunds) {
+          if (oldIdToPrimaryId.has(r.customerId)) r.customerId = oldIdToPrimaryId.get(r.customerId);
+        }
+      }
+      if (Array.isArray(db.settlements)) {
+        for (const s of db.settlements) {
+          if (oldIdToPrimaryId.has(s.customerId)) s.customerId = oldIdToPrimaryId.get(s.customerId);
+        }
+      }
+    }
   }
+
   if (!Array.isArray(db.payments)) {
     db.payments = [];
   }
@@ -1025,10 +1115,85 @@ function runAutoSettlementSweep() {
 }
 
 function normalizePhone(phone) {
-  return String(phone || '').replace(/\s+/g, '');
+  return String(phone || '').replace(/[\s\-\(\)\.]/g, '');
+}
+
+function validateCustomerPhone(rawPhone) {
+  if (!rawPhone || typeof rawPhone !== 'string') {
+    return { isValid: false, error: 'Phone number is required.' };
+  }
+
+  const cleaned = rawPhone.trim().replace(/[\s\-\(\)\.]/g, '');
+
+  if (!/^\+?\d+$/.test(cleaned)) {
+    return { isValid: false, error: 'Phone number must only contain numbers (e.g. 07XXXXXXXX or 01XXXXXXXX).' };
+  }
+
+  const digits = cleaned.replace(/^\+/, '');
+
+  let core = '';
+  if (digits.startsWith('254') && digits.length === 12) {
+    core = digits.slice(3);
+  } else if (digits.startsWith('0') && digits.length === 10) {
+    core = digits.slice(1);
+  } else if (digits.length === 9 && (digits.startsWith('7') || digits.startsWith('1'))) {
+    core = digits;
+  } else {
+    return {
+      isValid: false,
+      error: 'Invalid phone number length or prefix. Enter a valid 10-digit Kenyan mobile number (e.g. 07XXXXXXXX or 01XXXXXXXX).'
+    };
+  }
+
+  // Ensure prefix starts with 7 or 1 (Safaricom / Airtel / Telkom / Faiba)
+  if (!/^[17]\d{8}$/.test(core)) {
+    return {
+      isValid: false,
+      error: 'Invalid mobile prefix. Kenyan mobile numbers must begin with 07 or 01.'
+    };
+  }
+
+  // Anti-dummy checks:
+  // 1. All identical repeated digits (e.g. 0000000000, 0777777777, 0700000000)
+  const fullLocal = `0${core}`;
+  if (/^(\d)\1+$/.test(fullLocal) || /^(\d)\1+$/.test(core)) {
+    return {
+      isValid: false,
+      error: 'Invalid phone number. Repeated dummy numbers (such as 0000000000) are not permitted.'
+    };
+  }
+
+  // 2. Insufficient unique digits (e.g. 0700000000, 0711111111, 0100000000)
+  const uniqueDigits = new Set(core.split(''));
+  if (uniqueDigits.size < 3) {
+    return {
+      isValid: false,
+      error: 'Invalid phone number. Please enter a genuine active mobile phone number.'
+    };
+  }
+
+  // 3. Obvious dummy sequences
+  const dummySequences = ['123456789', '987654321', '012345678', '712345678', '798765432', '700000000', '100000000'];
+  if (dummySequences.includes(core)) {
+    return {
+      isValid: false,
+      error: 'Invalid phone number. Dummy or sequential test numbers are not permitted.'
+    };
+  }
+
+  return {
+    isValid: true,
+    localFormat: `0${core}`,
+    intlFormat: `254${core}`,
+    coreDigits: core
+  };
 }
 
 function normalizeKenyanPhone(phone) {
+  const validation = validateCustomerPhone(phone);
+  if (validation.isValid) {
+    return validation.intlFormat;
+  }
   const cleaned = normalizePhone(phone).replace(/[^\d+]/g, '');
   if (cleaned.startsWith('+254')) return cleaned.slice(1);
   if (cleaned.startsWith('254')) return cleaned;
@@ -1036,8 +1201,205 @@ function normalizeKenyanPhone(phone) {
   return cleaned;
 }
 
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function validateCustomerEmail(rawEmail, isRequired = false) {
+  if (!rawEmail || typeof rawEmail !== 'string') {
+    if (isRequired) return { isValid: false, error: 'Email address is required.' };
+    return { isValid: true, normalizedEmail: '' };
+  }
+  const cleaned = normalizeEmail(rawEmail);
+  if (!cleaned) {
+    if (isRequired) return { isValid: false, error: 'Email address is required.' };
+    return { isValid: true, normalizedEmail: '' };
+  }
+  const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+  if (!emailRegex.test(cleaned)) {
+    return { isValid: false, error: 'Please enter a valid email address (e.g. name@gmail.com).' };
+  }
+  return { isValid: true, normalizedEmail: cleaned };
+}
+
+function getEmailTransporter() {
+  const user = (process.env.EMAIL_USER || '').trim();
+  const pass = (process.env.EMAIL_APP_PASSWORD || '').replace(/[\s"']/g, '');
+
+  if (!user || !pass) {
+    return null;
+  }
+
+  return nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
+    auth: {
+      user,
+      pass
+    }
+  });
+}
+
+async function sendCustomerEmailOtp(email, customerName, otpCode, type = 'login') {
+  const isRegistration = type === 'register';
+  const subject = isRegistration 
+    ? `Welcome to Aqualine - Your Account Verification Code: ${otpCode}`
+    : `Aqualine Water Login Code: ${otpCode}`;
+
+  const htmlContent = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 540px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <div style="display: inline-block; width: 44px; height: 44px; line-height: 44px; border-radius: 12px; background: linear-gradient(135deg, #0284c7, #0369a1); color: #ffffff; font-size: 22px;">
+          💧
+        </div>
+        <h2 style="margin: 10px 0 2px; color: #0f172a; font-size: 19px; font-weight: 800;">Aqualine Water Billing</h2>
+        <p style="margin: 0; color: #64748b; font-size: 12px;">Customer Verification & Token Gateway</p>
+      </div>
+
+      <div style="background-color: #f8fafc; border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid #e2e8f0;">
+        <p style="margin: 0 0 10px; font-size: 14px; color: #334155;">Hello <b>${customerName || 'Customer'}</b>,</p>
+        <p style="margin: 0 0 16px; font-size: 13px; color: #475569; line-height: 1.5;">
+          ${isRegistration ? 'Your registration is complete! Use the one-time code below to verify your email and access your account:' : 'Here is your one-time verification code (OTP) to securely log in to your Aqualine account:'}
+        </p>
+
+        <div style="text-align: center; margin: 20px 0;">
+          <span style="display: inline-block; font-size: 30px; font-weight: 900; letter-spacing: 6px; color: #0284c7; background: #e0f2fe; padding: 10px 24px; border-radius: 12px; border: 2px dashed #38bdf8; font-family: monospace;">
+            ${otpCode}
+          </span>
+        </div>
+
+        <p style="margin: 0; font-size: 12px; color: #64748b; text-align: center;">
+          ⏱ This code will expire in <b>10 minutes</b>.
+        </p>
+      </div>
+
+      <p style="margin: 0 0 12px; font-size: 11px; color: #94a3b8; line-height: 1.4;">
+        If you did not request this OTP code, please ignore this email or contact <a href="mailto:aqualinesupport@gmail.com" style="color: #0284c7;">aqualinesupport@gmail.com</a>.
+      </p>
+
+      <div style="border-top: 1px solid #f1f5f9; padding-top: 12px; font-size: 11px; color: #94a3b8; text-align: center;">
+        © 2026 Aqualine Water Billing Company. Nairobi, Kenya.
+      </div>
+    </div>
+  `;
+
+  const transporter = getEmailTransporter();
+  if (!transporter || !EMAIL_ENABLED) {
+    console.log('\n============================================================');
+    console.log(`📧 [AQUALINE GMAIL OTP] Verification Code: ${otpCode}`);
+    console.log(`👤 Recipient Email: ${email}`);
+    console.log(`⏱  Validity: 10 minutes (Type: ${type})`);
+    console.log('💡 Note: Set EMAIL_USER & EMAIL_APP_PASSWORD in .env for live inbox delivery.');
+    console.log('============================================================\n');
+    return {
+      success: true,
+      mode: 'simulated',
+      email,
+      otpCode,
+      message: `Simulated OTP dispatched to ${email}. Verification code is: ${otpCode}`
+    };
+  }
+
+  try {
+    const info = await transporter.sendMail({
+      from: EMAIL_FROM,
+      to: email,
+      subject,
+      html: htmlContent
+    });
+
+    console.log(`[Live Gmail Sent] MessageId: ${info.messageId} to ${email}`);
+    return {
+      success: true,
+      mode: 'live',
+      email,
+      messageId: info.messageId,
+      message: `OTP email successfully sent to ${email}`
+    };
+  } catch (error) {
+    console.error(`[Gmail Send Error] Failed to send email to ${email}:`, error.message);
+    return {
+      success: false,
+      mode: 'live',
+      email,
+      error: error.message
+    };
+  }
+}
+
+async function sendWaterTokenEmail(email, customerName, tokenCode, litresBought, amount, receipt) {
+  if (!email) return null;
+
+  const subject = `Aqualine Water Token: ${tokenCode} (${litresBought} Litres)`;
+  const htmlContent = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 540px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <div style="display: inline-block; width: 44px; height: 44px; line-height: 44px; border-radius: 12px; background: linear-gradient(135deg, #0284c7, #0369a1); color: #ffffff; font-size: 22px;">
+          💧
+        </div>
+        <h2 style="margin: 10px 0 2px; color: #0f172a; font-size: 19px; font-weight: 800;">Payment & Water Token Receipt</h2>
+        <p style="margin: 0; color: #64748b; font-size: 12px;">Aqualine Automated Dispenser PIN</p>
+      </div>
+
+      <div style="background-color: #f0fdf4; border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid #bbf7d0;">
+        <p style="margin: 0 0 10px; font-size: 14px; color: #166534;">Payment Successful! Thank you <b>${customerName || 'Customer'}</b>.</p>
+        
+        <div style="text-align: center; margin: 18px 0;">
+          <div style="font-size: 12px; color: #15803d; font-weight: 700; text-transform: uppercase;">Your Dispenser Token PIN</div>
+          <span style="display: inline-block; font-size: 32px; font-weight: 900; letter-spacing: 5px; color: #047857; background: #ffffff; padding: 10px 24px; border-radius: 12px; border: 2px solid #86efac; font-family: monospace; margin-top: 6px;">
+            ${tokenCode}
+          </span>
+        </div>
+
+        <table style="width: 100%; font-size: 12px; border-collapse: collapse; margin-top: 14px;">
+          <tr><td style="padding: 4px 0; color: #4b5563;">Water Amount:</td><td style="padding: 4px 0; font-weight: bold; text-align: right; color: #111827;">${litresBought} Litres</td></tr>
+          <tr><td style="padding: 4px 0; color: #4b5563;">Amount Paid:</td><td style="padding: 4px 0; font-weight: bold; text-align: right; color: #111827;">KES ${Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td></tr>
+          <tr><td style="padding: 4px 0; color: #4b5563;">M-Pesa Receipt:</td><td style="padding: 4px 0; font-weight: bold; text-align: right; font-family: monospace; color: #111827;">${receipt || '-'}</td></tr>
+        </table>
+      </div>
+
+      <p style="margin: 0; font-size: 12px; color: #64748b; line-height: 1.4; text-align: center;">
+        Type your 8-digit token PIN on any Aqualine water dispenser keypad and press <b>#</b> to release water.
+      </p>
+    </div>
+  `;
+
+  const transporter = getEmailTransporter();
+  if (!transporter || !EMAIL_ENABLED) {
+    console.log(`[Simulated Token Email] To: ${email} | Token: ${tokenCode}`);
+    return;
+  }
+
+  try {
+    await transporter.sendMail({
+      from: EMAIL_FROM,
+      to: email,
+      subject,
+      html: htmlContent
+    });
+    console.log(`[Token Email Sent] To: ${email}`);
+  } catch (err) {
+    console.warn(`[Token Email Failed] To: ${email}:`, err.message);
+  }
+}
+
 function normalizeFullName(name) {
   return String(name || '').trim().replace(/\s+/g, ' ');
+}
+
+function validateCustomerFullName(fullName) {
+  if (!fullName || typeof fullName !== 'string') {
+    return { isValid: false, error: 'Full name is required.' };
+  }
+  const cleaned = normalizeFullName(fullName);
+  if (cleaned.length < 3) {
+    return { isValid: false, error: 'Full name must be at least 3 characters long.' };
+  }
+  if (!/[a-zA-Z]/.test(cleaned)) {
+    return { isValid: false, error: 'Full name must contain alphabetical characters.' };
+  }
+  return { isValid: true, normalizedName: cleaned };
 }
 
 function fullNamesMatch(storedName, providedName) {
@@ -1208,14 +1570,19 @@ async function sendTokenSms(phone, message) {
   }
 
   const form = new URLSearchParams();
+  const e164Phone = '+' + normalizeKenyanPhone(phone);
   form.set('username', SMS_USERNAME);
-  form.set('to', normalizeKenyanPhone(phone));
+  form.set('to', e164Phone);
   form.set('message', message);
   if (SMS_SENDER_ID) {
     form.set('from', SMS_SENDER_ID);
   }
 
-  const response = await fetch('https://api.africastalking.com/version1/messaging', {
+  const atBaseUrl = SMS_USERNAME === 'sandbox' 
+    ? 'https://api.sandbox.africastalking.com/version1/messaging' 
+    : 'https://api.africastalking.com/version1/messaging';
+
+  const response = await fetch(atBaseUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -1295,23 +1662,176 @@ function calculateLitres(amount, unitType) {
 }
 
 function findCustomerByPhone(db, phone) {
-  return db.customers.find((customer) => customer.phone === phone);
+  if (!phone) return null;
+  const validation = validateCustomerPhone(phone);
+  if (validation.isValid) {
+    const local = validation.localFormat;
+    const intl = validation.intlFormat;
+    return db.customers.find((c) => {
+      const cVal = validateCustomerPhone(c.phone);
+      if (cVal.isValid) {
+        return cVal.localFormat === local || cVal.intlFormat === intl;
+      }
+      return c.phone === phone || c.phone === local || c.phone === intl;
+    });
+  }
+  const norm = normalizePhone(phone);
+  return db.customers.find((c) => normalizePhone(c.phone) === norm);
+}
+
+function findCustomerByEmail(db, email) {
+  if (!email) return null;
+  const norm = normalizeEmail(email);
+  return db.customers.find((c) => normalizeEmail(c.email) === norm);
+}
+
+function findCustomerByPhoneOrEmail(db, identifier) {
+  if (!identifier) return null;
+  const norm = String(identifier).trim();
+  if (norm.includes('@')) {
+    return findCustomerByEmail(db, norm);
+  }
+  return findCustomerByPhone(db, norm);
 }
 
 app.get('/customer.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'customer.html'));
 });
 
-app.post('/api/customer/login', (req, res) => {
-  const fullName = normalizeFullName(req.body?.fullName);
-  const cleanedPhone = normalizePhone(req.body?.phone);
+// Send Email OTP Code
+app.post('/api/customer/auth/send-otp', async (req, res) => {
+  const { identifier, email, phone } = req.body || {};
+  const target = identifier || email || phone;
 
-  if (!fullName || !cleanedPhone) {
-    return res.status(400).json({ error: 'fullName and phone are required' });
+  if (!target) {
+    return res.status(400).json({ error: 'Please provide your registered Email address or Phone number.' });
   }
 
   const db = readDb();
-  const customer = findCustomerByPhone(db, cleanedPhone);
+  const customer = findCustomerByPhoneOrEmail(db, target);
+
+  if (!customer) {
+    return res.status(404).json({ error: 'No customer account found with that email/phone. Please register first.' });
+  }
+
+  if (!customer.email) {
+    return res.status(400).json({ error: 'This account does not have an email registered. Please use name and phone login or update your email.' });
+  }
+
+  const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+  customer.emailOtp = otpCode;
+  customer.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  customer.updatedAt = nowIso();
+  writeDb(db);
+
+  const emailResult = await sendCustomerEmailOtp(customer.email, customer.fullName, otpCode, 'login');
+
+  return res.json({
+    ok: true,
+    message: emailResult.success
+      ? `Verification code sent to ${customer.email}`
+      : `Email delivery encountered an issue (${emailResult.error}). Use the code on screen to proceed.`,
+    email: customer.email,
+    mode: emailResult.mode,
+    devOtp: (!emailResult.success || emailResult.mode === 'simulated') ? otpCode : undefined
+  });
+});
+
+// Verify Email OTP Code & Login
+app.post('/api/customer/auth/verify-otp', (req, res) => {
+  const { identifier, email, phone, otp } = req.body || {};
+  const target = identifier || email || phone;
+  const providedOtp = String(otp || '').trim();
+
+  if (!target || !providedOtp) {
+    return res.status(400).json({ error: 'Email/Phone and 6-digit OTP code are required.' });
+  }
+
+  const db = readDb();
+  const customer = findCustomerByPhoneOrEmail(db, target);
+
+  if (!customer) {
+    return res.status(404).json({ error: 'Customer account not found.' });
+  }
+
+  if (!customer.emailOtp || !customer.otpExpiresAt) {
+    return res.status(400).json({ error: 'No active OTP found. Please request a new code.' });
+  }
+
+  if (new Date(customer.otpExpiresAt).getTime() < Date.now()) {
+    return res.status(400).json({ error: 'The OTP code has expired. Please request a new code.' });
+  }
+
+  if (customer.emailOtp !== providedOtp && providedOtp !== customer.loginCode) {
+    return res.status(401).json({ error: 'Invalid verification code. Please check your email and try again.' });
+  }
+
+  customer.emailOtp = null;
+  customer.otpExpiresAt = null;
+  customer.loginToken = generateCustomerToken();
+  customer.lastActivityAt = nowIso();
+  customer.updatedAt = nowIso();
+  writeDb(db);
+
+  return res.json({
+    message: 'Login successful via Gmail OTP',
+    customer: {
+      id: customer.id,
+      fullName: customer.fullName,
+      phone: customer.phone,
+      email: customer.email || '',
+      loginToken: customer.loginToken
+    },
+    token: customer.loginToken
+  });
+});
+
+app.post('/api/customer/login', (req, res) => {
+  const { fullName, phone, email, otp } = req.body || {};
+
+  // If OTP is provided, route to OTP verification
+  if (otp && (email || phone)) {
+    const db = readDb();
+    const customer = findCustomerByPhoneOrEmail(db, email || phone);
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer account not found.' });
+    }
+    if ((customer.emailOtp === String(otp).trim() || customer.loginCode === String(otp).trim()) &&
+        (!customer.otpExpiresAt || new Date(customer.otpExpiresAt).getTime() >= Date.now())) {
+      customer.emailOtp = null;
+      customer.otpExpiresAt = null;
+      customer.loginToken = generateCustomerToken();
+      customer.lastActivityAt = nowIso();
+      customer.updatedAt = nowIso();
+      writeDb(db);
+      return res.json({
+        message: 'Customer login successful via OTP code',
+        customer: {
+          id: customer.id,
+          fullName: customer.fullName,
+          phone: customer.phone,
+          email: customer.email || '',
+          loginToken: customer.loginToken
+        }
+      });
+    }
+  }
+
+  const nameValidation = validateCustomerFullName(fullName);
+  if (!nameValidation.isValid) {
+    return res.status(400).json({ error: nameValidation.error });
+  }
+
+  const phoneValidation = validateCustomerPhone(phone);
+  if (!phoneValidation.isValid) {
+    return res.status(400).json({ error: phoneValidation.error });
+  }
+
+  const validFullName = nameValidation.normalizedName;
+  const canonicalPhone = phoneValidation.localFormat;
+
+  const db = readDb();
+  const customer = findCustomerByPhone(db, canonicalPhone);
   if (!customer || !fullNamesMatch(customer.fullName, fullName)) {
     return res.status(401).json({ error: 'Invalid name or phone number. Please check your details or register first.' });
   }
@@ -1327,6 +1847,7 @@ app.post('/api/customer/login', (req, res) => {
       id: customer.id,
       fullName: customer.fullName,
       phone: customer.phone,
+      email: customer.email || '',
       loginToken: customer.loginToken
     }
   });
@@ -1346,10 +1867,172 @@ app.get('/api/customer/me', requireCustomer, (req, res) => {
       id: customer.id,
       fullName: customer.fullName,
       phone: customer.phone,
+      email: customer.email || '',
       createdAt: customer.createdAt,
       lastActivityAt: customer.lastActivityAt
     },
     payments: customerPayments
+  });
+});
+
+async function generateCustomerStatementPdfBuffer(customer, payments, refunds = []) {
+  const tempDir = path.join(__dirname, 'data', 'temp');
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+  }
+
+  const fileId = crypto.randomUUID();
+  const jsonPath = path.join(tempDir, `stmt_${fileId}.json`);
+  const pdfPath = path.join(tempDir, `stmt_${fileId}.pdf`);
+
+  const payload = {
+    customer,
+    payments,
+    refunds
+  };
+
+  fs.writeFileSync(jsonPath, JSON.stringify(payload), 'utf-8');
+
+  try {
+    const scriptPath = path.join(__dirname, 'customer_statement_pdf.py');
+    await execFilePromise('python3', [scriptPath, jsonPath, pdfPath]);
+
+    const pdfBuffer = fs.readFileSync(pdfPath);
+    return pdfBuffer;
+  } finally {
+    try { if (fs.existsSync(jsonPath)) fs.unlinkSync(jsonPath); } catch {}
+    try { if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath); } catch {}
+  }
+}
+
+app.get('/api/customer/statement/pdf', requireCustomer, async (req, res) => {
+  try {
+    const db = readDb();
+    const customer = db.customers.find((entry) => entry.id === req.customer.id);
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    const payments = db.payments
+      .filter((p) => p.customerId === customer.id)
+      .slice()
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    const refunds = (db.refunds || []).filter((r) => r.customerId === customer.id);
+
+    const pdfBuffer = await generateCustomerStatementPdfBuffer(customer, payments, refunds);
+
+    const safePhone = (customer.phone || 'customer').replace(/[^a-zA-Z0-9]/g, '_');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="Aqualine-Statement-${safePhone}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    return res.send(pdfBuffer);
+  } catch (error) {
+    console.error('Failed to generate customer statement PDF:', error);
+    return res.status(500).json({ error: error.message || 'Failed to generate PDF statement' });
+  }
+});
+
+app.get('/api/admin/customers/:customerId/statement/pdf', requireAdmin, async (req, res) => {
+  try {
+    const { customerId } = req.params;
+    const db = readDb();
+    const customer = db.customers.find((entry) => entry.id === customerId);
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    const payments = db.payments
+      .filter((p) => p.customerId === customer.id)
+      .slice()
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    const refunds = (db.refunds || []).filter((r) => r.customerId === customer.id);
+
+    const pdfBuffer = await generateCustomerStatementPdfBuffer(customer, payments, refunds);
+
+    const safePhone = (customer.phone || 'customer').replace(/[^a-zA-Z0-9]/g, '_');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="Aqualine-Statement-${safePhone}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    return res.send(pdfBuffer);
+  } catch (error) {
+    console.error('Failed to generate admin customer statement PDF:', error);
+    return res.status(500).json({ error: error.message || 'Failed to generate PDF statement' });
+  }
+});
+
+app.post('/api/customer/refunds', requireCustomer, (req, res) => {
+  const { paymentId, reason } = req.body;
+  const refundReason = String(reason || 'Customer requested refund via portal').trim();
+
+  if (!paymentId) {
+    return res.status(400).json({ error: 'paymentId is required' });
+  }
+
+  const db = readDb();
+  const paymentRecord = db.payments.find((p) => p.id === paymentId);
+
+  if (!paymentRecord) {
+    return res.status(404).json({ error: 'Payment not found' });
+  }
+
+  if (paymentRecord.customerId !== req.customer.id) {
+    return res.status(403).json({ error: 'You are not authorized to request a refund for this payment' });
+  }
+
+  if (paymentRecord.status !== 'paid') {
+    return res.status(400).json({ error: 'Refunds can only be requested for completed (paid) payments' });
+  }
+
+  const alreadyRefunded = roundCurrency(paymentRecord.refundedAmount || 0);
+  const maxRefundable = roundCurrency(paymentRecord.amount - alreadyRefunded);
+
+  if (maxRefundable <= 0) {
+    return res.status(400).json({ error: 'This payment has already been fully refunded' });
+  }
+
+  const pendingRefund = db.refunds.find((r) => r.paymentId === paymentId && r.status === 'pending_approval');
+  if (pendingRefund) {
+    return res.status(409).json({ error: 'A refund request is already pending approval for this payment' });
+  }
+
+  const amount = paymentRecord.amount;
+
+  const refundRequest = {
+    id: crypto.randomUUID(),
+    paymentId,
+    customerId: req.customer.id,
+    amount,
+    reason: refundReason,
+    status: 'pending_approval',
+    requestedBy: `customer:${req.customer.fullName}`,
+    createdBy: `customer:${req.customer.fullName}`,
+    createdAt: nowIso(),
+    updatedAt: nowIso()
+  };
+
+  db.refunds.push(refundRequest);
+  paymentRecord.refundStatus = 'pending';
+  paymentRecord.updatedAt = nowIso();
+  db.ledger.push(
+    createLedgerEntry({
+      type: 'refund_requested',
+      amount,
+      direction: 'out',
+      account: 'operations',
+      referenceId: paymentId,
+      note: refundReason,
+      metadata: { refundRequestId: refundRequest.id, requestedBy: refundRequest.requestedBy }
+    })
+  );
+
+  writeDb(db);
+
+  return res.status(201).json({
+    message: 'Refund request submitted for approval.',
+    refundRequest,
+    maxRefundable
   });
 });
 
@@ -1368,44 +2051,115 @@ app.get('/api/payment-instructions', (req, res) => {
   });
 });
 
-app.post('/api/customers/register', (req, res) => {
-  const { fullName, phone } = req.body;
-  const cleanedPhone = normalizePhone(phone);
+app.post('/api/customers/register', async (req, res) => {
+  const { fullName, phone, email } = req.body;
 
-  if (!fullName || !cleanedPhone) {
-    return res.status(400).json({ error: 'fullName and phone are required' });
+  const nameValidation = validateCustomerFullName(fullName);
+  if (!nameValidation.isValid) {
+    return res.status(400).json({ error: nameValidation.error });
   }
 
+  const phoneValidation = validateCustomerPhone(phone);
+  if (!phoneValidation.isValid) {
+    return res.status(400).json({ error: phoneValidation.error });
+  }
+
+  const emailValidation = validateCustomerEmail(email, false);
+  if (!emailValidation.isValid) {
+    return res.status(400).json({ error: emailValidation.error });
+  }
+
+  const validFullName = nameValidation.normalizedName;
+  const canonicalPhone = phoneValidation.localFormat;
+  const canonicalEmail = emailValidation.normalizedEmail;
+
   const db = readDb();
-  let customer = findCustomerByPhone(db, cleanedPhone);
+  let customer = findCustomerByPhone(db, canonicalPhone);
+  if (!customer && canonicalEmail) {
+    customer = findCustomerByEmail(db, canonicalEmail);
+  }
+
+  const loginCode = Math.floor(100000 + Math.random() * 900000).toString();
 
   if (!customer) {
     customer = {
       id: crypto.randomUUID(),
-      fullName,
-      phone: cleanedPhone,
+      fullName: validFullName,
+      phone: canonicalPhone,
+      email: canonicalEmail,
+      loginCode,
+      loginToken: generateCustomerToken(),
+      emailOtp: loginCode,
+      otpExpiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
       createdAt: nowIso(),
       updatedAt: nowIso(),
       lastActivityAt: nowIso()
     };
     db.customers.push(customer);
   } else {
-    customer.fullName = fullName;
+    customer.fullName = validFullName;
+    customer.phone = canonicalPhone;
+    if (canonicalEmail) customer.email = canonicalEmail;
+    customer.loginCode = loginCode;
+    customer.emailOtp = loginCode;
+    customer.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    customer.loginToken = customer.loginToken || generateCustomerToken();
     customer.updatedAt = nowIso();
     customer.lastActivityAt = nowIso();
   }
 
+  // Send registration welcome & access code via SMS
+  const smsMessage = `Aqualine: Welcome ${customer.fullName}! Registration complete. Phone: ${customer.phone}. Account Login Code: ${customer.loginCode}`;
+  let smsResult = null;
+  try {
+    smsResult = await sendTokenSms(customer.phone, smsMessage);
+  } catch (err) {
+    console.warn(`SMS notification error for ${customer.phone}:`, err.message);
+  }
+
+  // Send Gmail OTP / Welcome Email if email was provided
+  let emailResult = null;
+  if (customer.email) {
+    try {
+      emailResult = await sendCustomerEmailOtp(customer.email, customer.fullName, loginCode, 'register');
+    } catch (err) {
+      console.warn(`Email OTP dispatch error for ${customer.email}:`, err.message);
+    }
+  }
+
   writeDb(db);
-  res.status(201).json({ message: 'Customer registered successfully', customer });
+  res.status(201).json({
+    message: customer.email 
+      ? `Registration complete! Verification OTP sent to ${customer.email}` 
+      : 'Customer registered successfully.',
+    customer: {
+      id: customer.id,
+      fullName: customer.fullName,
+      phone: customer.phone,
+      email: customer.email || '',
+      loginCode: customer.loginCode,
+      loginToken: customer.loginToken
+    },
+    loginCode: customer.loginCode,
+    email: customer.email,
+    sms: smsResult,
+    emailResult
+  });
 });
 
 app.post('/api/payments/mpesa', async (req, res) => {
   const { phone, amount, unitType } = req.body;
-  const cleanedPhone = normalizePhone(phone);
+
+  const phoneValidation = validateCustomerPhone(phone);
+  if (!phoneValidation.isValid) {
+    return res.status(400).json({ error: phoneValidation.error });
+  }
+
+  const cleanedPhone = phoneValidation.localFormat;
   const paymentAmount = Number(amount);
 
-  if (!cleanedPhone || Number.isNaN(paymentAmount) || paymentAmount <= 0) {
-    return res.status(400).json({ error: 'Valid phone and amount are required' });
+  if (Number.isNaN(paymentAmount) || paymentAmount <= 0) {
+    return res.status(400).json({ error: 'Valid payment amount is required' });
   }
 
   if (!['litre', '1000_litre', 'unit'].includes(unitType)) {
@@ -1875,6 +2629,8 @@ app.post('/api/admin/refunds', (req, res) => {
   };
 
   db.refunds.push(refundRequest);
+  paymentRecord.refundStatus = 'pending';
+  paymentRecord.updatedAt = nowIso();
   db.ledger.push(
     createLedgerEntry({
       type: 'refund_requested',
@@ -2071,6 +2827,23 @@ app.get('/api/admin/payments', (req, res) => {
   const db = readDb();
   res.json({ payments: db.payments.slice().reverse() });
 });
+
+app.post('/api/help/inquiry', (req, res) => {
+  const { name, phone, email, subject, message } = req.body || {};
+  if (!name || (!phone && !email) || !message) {
+    return res.status(400).json({ error: 'Please provide your name, phone/email, and a message.' });
+  }
+
+  const ticketId = 'HELP-' + Math.floor(100000 + Math.random() * 900000);
+  console.log(`[Help Inquiry] #${ticketId} from ${name} (${phone || email}) [${subject || 'General'}]: ${message}`);
+
+  res.json({
+    ok: true,
+    ticketId,
+    message: `Thank you, ${name}! Your inquiry (Ticket #${ticketId}) has been received. Our team will contact you shortly.`
+  });
+});
+
 
 async function startServer() {
   await initializeDatabase();
