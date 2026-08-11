@@ -464,14 +464,24 @@ async function loadCustomers() {
       <td class="px-4 py-3 text-slate-600">KES ${customer.totalSpent}</td>
       <td class="px-4 py-3 text-slate-600">${formatDate(customer.lastActivityAt)}</td>
       <td class="px-4 py-3">
-        <button
-          data-action="delete-customer"
-          data-id="${escapeHtml(customer.id)}"
-          data-name="${escapeHtml(customer.fullName)}"
-          class="rounded-lg border border-red-300 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-100"
-        >
-          Delete
-        </button>
+        <div class="flex items-center gap-2">
+          <button
+            data-action="download-customer-statement"
+            data-id="${escapeHtml(customer.id)}"
+            data-name="${escapeHtml(customer.fullName)}"
+            class="rounded-lg border border-sky-300 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700 transition hover:bg-sky-100"
+          >
+            PDF Statement
+          </button>
+          <button
+            data-action="delete-customer"
+            data-id="${escapeHtml(customer.id)}"
+            data-name="${escapeHtml(customer.fullName)}"
+            class="rounded-lg border border-red-300 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-100"
+          >
+            Delete
+          </button>
+        </div>
       </td>
     `;
     tbody.appendChild(tr);
@@ -691,29 +701,69 @@ document.getElementById('sendCustomersReport').addEventListener('click', async (
 });
 
 document.querySelector('#customersTable tbody').addEventListener('click', async (event) => {
-  const actionButton = event.target.closest('button[data-action="delete-customer"]');
-  if (!actionButton) {
+  const deleteBtn = event.target.closest('button[data-action="delete-customer"]');
+  const statementBtn = event.target.closest('button[data-action="download-customer-statement"]');
+
+  if (statementBtn) {
+    const customerId = statementBtn.dataset.id;
+    const customerName = statementBtn.dataset.name || 'customer';
+    try {
+      setButtonLoading(statementBtn, true, 'Generating PDF...');
+      const apiBaseUrl = window.APP_CONFIG?.apiBaseUrl || '';
+      const requestUrl = apiBaseUrl
+        ? new URL(`/api/admin/customers/${customerId}/statement/pdf`, apiBaseUrl).toString()
+        : `/api/admin/customers/${customerId}/statement/pdf`;
+
+      const response = await fetch(requestUrl, {
+        method: 'GET',
+        headers: buildAdminHeaders()
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to generate customer statement PDF');
+      }
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      const safeName = customerName.replace(/[^a-zA-Z0-9]/g, '_');
+      a.download = `Aqualine-Statement-${safeName}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(downloadUrl);
+      showToast(`Statement PDF downloaded for ${customerName}`);
+    } catch (error) {
+      setText('adminResult', error.message, true);
+      showToast(error.message, true);
+    } finally {
+      setButtonLoading(statementBtn, false);
+    }
     return;
   }
 
-  const customerName = actionButton.dataset.name || 'this customer';
-  const customerId = actionButton.dataset.id;
+  if (deleteBtn) {
+    const customerName = deleteBtn.dataset.name || 'this customer';
+    const customerId = deleteBtn.dataset.id;
 
-  if (!window.confirm(`Delete ${customerName} from the system? This will remove the customer record and related payments.`)) {
-    return;
-  }
+    if (!window.confirm(`Delete ${customerName} from the system? This will remove the customer record and related payments.`)) {
+      return;
+    }
 
-  try {
-    setButtonLoading(actionButton, true, 'Deleting...');
-    const result = await deleteCustomer(customerId);
-    setText('adminResult', result.message);
-    showToast(result.message);
-    await loadCustomers();
-  } catch (error) {
-    setText('adminResult', error.message, true);
-    showToast(error.message, true);
-  } finally {
-    setButtonLoading(actionButton, false);
+    try {
+      setButtonLoading(deleteBtn, true, 'Deleting...');
+      const result = await deleteCustomer(customerId);
+      setText('adminResult', result.message);
+      showToast(result.message);
+      await loadCustomers();
+    } catch (error) {
+      setText('adminResult', error.message, true);
+      showToast(error.message, true);
+    } finally {
+      setButtonLoading(deleteBtn, false);
+    }
   }
 });
 
