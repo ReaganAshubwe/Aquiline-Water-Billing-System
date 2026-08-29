@@ -44,11 +44,9 @@ This project proposal has been submitted for examination with my approval as the
 
 ## ABSTRACT
 
-Manual water billing in Kenya suffers from severe systemic inefficiencies, with the Water Services Regulatory Board (WASREB) reporting a national average of 43% for Non-Revenue Water (NRW). This revenue loss is heavily driven by manual meter-reading transcription errors, unlogged consumption patterns, and delayed billing cycles. To address this technological gap, this project introduces **Aqualine**, an integrated web-based automated water billing platform designed for Kenyan Water Service Providers (WSPs).
+Every day, millions of litres of clean water vanish unaccounted for across Kenya's utility grids—a systemic 43% resource loss driven by manual record-keeping errors and delayed billing cycles. To bridge this critical gap, this project introduces **Aqualine**, a modern, automated prepaid water billing web platform for Water Service Providers (WSPs).
 
-Developed under an Agile Scrum framework, the system digitizes the utility lifecycle via a decoupled multi-tier architecture. The backend is powered by a high-performance **Node.js/Express** REST API, featuring a dynamic dual-storage engine that automatically handles production relational transactions in **MySQL 8.0** while offering a lightweight local **JSON** file persistence model for simplified deployment. The frontend delivers a responsive, modern portal utilizing **HTML5, Vanilla JavaScript, and Tailwind CSS**, allowing consumers to manage accounts, generate prepaid water tokens (billed at KES 10 per litre or KES 10,000 per 1,000 litres), and execute transactions. 
-
-Revenue collection is secured through direct integration with Safaricom’s **M-Pesa Daraja API** for STK Push billing requests, supported by an administrative manual receipt reconciliation workflow. To guarantee maximum financial security and transparency, Aqualine incorporates an immutable double-entry ledger auditing system that splits incoming collections into *savings* (70%) and *operations* (30%) floats, governed by a strict **Maker-Checker** approval policy for billing refunds. Tested against operational requirements from Nyeri County (NYEWASCO) and Nairobi County (NCWSC), Aqualine replaces outdated manual workflows with secure cloud automation, providing real-time KPI dashboards to eliminate revenue leakage, reduce billing latency, and boost collection efficiency past a 90% threshold.
+Built on a decoupled multi-tier architecture, the backend uses **Node.js/Express** (with **MySQL 8.0** and local **JSON** fallback) and the frontend uses **HTML5, Vanilla JS, and Tailwind CSS**. Key features include secure passwordless **Gmail SMTP OTP** login, strict **Kenyan phone number validation** with anti-dummy filtering, automated **M-Pesa STK Push** payment integration, on-demand **Python ReportLab PDF** statements, and a floating **FAQs/Help Widget**. To secure utility revenue, the system implements a **Maker-Checker** refund approval policy and an immutable **double-entry ledger** that automatically splits incoming collections (70% savings / 30% operations). Aqualine eliminates data-entry latency and leakage, targeting a collection efficiency rate above 90%.
 
 ---
 
@@ -151,11 +149,9 @@ Finally, I acknowledge the researchers, scholars, and practitioners whose publis
 ## CHAPTER ONE: INTRODUCTION
 
 ### 1.1 Introduction
-Kenyan water service delivery is managed by county-level entities known as Water Service Providers (WSPs) under national Water Services Regulatory Board (WASREB) oversight. These utilities handle consumer connections, manage physical networks, monitor local consumption via mechanical meters, and collect revenue.
+Water service delivery in Kenya stands at a crossroads where legacy, paper-based billing systems clash with rapid urbanization. Managed by county-level Water Service Providers (WSPs) under WASREB oversight, these utilities struggle to manage connections and collect revenue through manual ledger sheets and analog field walks.
 
-Historically, these data paths have relied on manual paper ledger logs and hand-carried field collection runs. When utilities handle billing data through analog channels, it introduces extensive transcription errors, data sheet loss, and heavy consumption-to-invoice latency. This results in massive revenue leakages and deep consumer disputes over estimated billing cycles.
-
-The **Aqualine** project introduces an automated data management infrastructure to replace manual processing routes with a structured digital data pipeline. By decoupling backend processing from client presentations, the platform automates payment validation, billing computations, water token delivery, and financial audit logging in real-time.
+This reliance on paper pipelines creates severe data latency, transcription errors, and unchecked revenue leakage. **Aqualine** addresses this challenge by digitizing the utility billing cycle. The platform replaces slow, error-prone manual tasks with a real-time digital pipeline—automating payment validation, volume calculations, token delivery, and financial auditing.
 
 ### 1.2 Background of the Study
 This study models its functional requirements for regional water commercial operations, specifically Nyeri Water and Sewerage Company (NYEWASCO) and Nairobi City Water and Sewerage Company (NCWSC). These utilities distribute clean water, manage connection grids, log consumer volume consumption, and collect revenue across thousands of domestic, commercial, and industrial endpoints.
@@ -179,18 +175,22 @@ To analyze manual utility process bottlenecks and build an automated web-based w
 #### 1.4.2 Specific Objectives
 * **To analyze** operational data collection bottlenecks and finalize functional requirements specifications for regional water utilities by Week 6.
 * **To design** a normalized relational database schema (3NF) mapped to MySQL and a local JSON cache configuration to support transaction ACID compliance by Week 8.
-* **To code** a responsive, Tailwind-driven web interface for customer registration, account history tracking, and prepaid portal access by Week 14.
+* **To code** a responsive, Tailwind-driven web interface for customer registration, account history tracking, prepaid portal access, and floating support widget interactions by Week 14.
 * **To program** an automated billing computation engine for volume-based pricing (KES 10 per litre) and secure 9-digit random token generation by Week 16.
-* **To integrate** transaction confirmation APIs to support direct Safaricom M-Pesa Daraja STK Push notifications and manual Till receipt reconciliation by Week 18.
-* **To develop** a secure administrative console featuring immutable double-entry ledger auditing, automated collection sweeps, and a Maker-Checker refund workflow by Week 20.
-* **To execute** formal system validation runs and user acceptance testing (UAT) to hit an 85% stakeholder satisfaction rating by Week 22.
+* **To integrate** secure customer validation routes incorporating 6-digit Gmail OTP verification and anti-dummy Kenyan phone validator checks by Week 17.
+* **To bridge** a dynamic document rendering framework using Python ReportLab to generate and download official customer account statements by Week 18.
+* **To integrate** transaction confirmation APIs to support direct Safaricom M-Pesa Daraja STK Push notifications and manual Till receipt reconciliation by Week 19.
+* **To develop** a secure administrative console featuring immutable double-entry ledger auditing, automated collection sweeps, and a Maker-Checker refund workflow by Week 21.
+* **To execute** formal system validation runs and user acceptance testing (UAT) to hit an 85% stakeholder satisfaction rating by Week 23.
 
 ### 1.5 Scope and Limitation of the Study
 
 #### 1.5.1 Project Scope Inclusions
-* **Authentication & Portal Security:** Customer account registration, phone validation, temporary session token generation, and secure role-based administrative entry.
+* **Authentication & Portal Security:** Customer account registration, strict Kenyan phone validation with anti-dummy blocks, 6-digit one-time passcodes (OTP) dispatched via Google Gmail SMTP, temporary session token generation, and secure role-based administrative entry.
 * **Prepaid Billing & Vending Logic:** Digital invoicing matching volume metrics (KES 10 per litre vs. KES 10,000 per 1,000 litres) with automated floor-division math, returning secure 9-digit random water token numbers.
 * **Unified Payment Processing:** Safaricom M-Pesa Daraja API callback listener for STK Push requests alongside a manual reconciliation portal for client Till receipts.
+* **Downloadable Account Statements:** A dynamic PDF compiler bridging Python ReportLab to render statements detailing customer metadata, payment history, issued tokens, and refund audits.
+* **Interactive Help & FAQs Widget:** A client-side floating helper interface containing a searchable FAQ catalog, instant water utility tariff calculator, and support ticket submissions.
 * **Financial Ledger Auditing:** An immutable accounting ledger recording system cashflows, automated hourly sweeps splitting income into savings (70%) and operations (30%) pools, and a manual operations top-up gateway.
 * **Maker-Checker Administration:** Protected administrative controls separating refund creators (Makers) from refund approvers (Checkers) to block internal financial fraud.
 
@@ -254,7 +254,7 @@ This project will follow a 24-week implementation schedule divided into six phas
 ## CHAPTER TWO: LITERATURE REVIEW
 
 ### 2.1 Introduction
-This chapter evaluates literature, statutory plans, and software paradigms governing utility invoicing automation, remote collection systems, and database financial data management. By matching historical system pitfalls against technical recommendations, it outlines the core architectural baseline for Aqualine.
+Behind every successful software implementation lies a foundation of established engineering principles and lessons from past utility failures. This chapter traces the evolution of billing automation, mobile payment integrations, passwordless security, and dynamic document generation. By analyzing historical pitfalls and modern technical paradigms, it establishes the architectural blueprint for Aqualine.
 
 ### 2.2 Evolution of Automated Water Billing Systems
 
@@ -310,6 +310,12 @@ A key organizational security pattern is the **Maker-Checker segregation of duti
 #### 2.4.4 Change Management & Technology Adoption
 The operational success of a software environment is heavily dependent on active staff adoption and positive user engagement (Wamuyu, 2022). Pushback from internal administrative personnel remains a primary cause of system deployment collapse across public institutions (Wamuyu, 2022). Mitigating this adoption hurdle requires collaborative development, user-centered interface design, and straightforward, accessible training procedures (Wamuyu, 2022).
 
+#### 2.4.5 Google Gmail SMTP & OTP Verification in Web Security
+Passwordless login using 6-digit One-Time Passcodes (OTP) sent via secure SMTP (Gmail API) prevents credential theft and eliminates password management overhead. Dynamic verification codes expire in 10 minutes to block replay attacks, ensuring reliable user session security (Stuttard & Pinto, 2019).
+
+#### 2.4.6 Dynamic Document Rendering: PDF Generation in Web Clients
+Dynamic, server-side PDF generation provides immutable, synchronized transaction histories for customers and utility auditors. Utilizing a decoupled script (e.g., Python ReportLab) triggered by the backend API ensures that document compiler resource consumption does not block web servers, producing accurate, print-ready reports (Lam et al., 2009).
+
 ### 2.5 Critical Analysis of Literature Gaps
 * **Persistent Connectivity Bias:** Existing utility studies assume constant, high-speed web access, completely downplaying the standard local internet blackouts frequent in remote regional perimeters.
 * **Smart Hardware Over-Optimism:** Academic literature frequently treats smart metering (AMI) as an immediate operational fix, downplaying the reality that its total cost of ownership remains impossible for small-scale local operators.
@@ -323,7 +329,7 @@ The operational success of a software environment is heavily dependent on active
 ## CHAPTER THREE: SYSTEM METHODOLOGY
 
 ### 3.1 Introduction
-This chapter explains the structured methods and engineering tools used to build, validate, and test the Aqualine Automated Water Billing System. It outlines facts of discovery methods, process flow modeling, and the specific application toolstack used to implement a stable web platform.
+Building a reliable, audit-secure billing platform requires a systematic blueprint that balances user needs with strict engineering standards. This chapter outlines the Iterative Prototyping lifecycle used to build Aqualine. From fact discovery and process modeling to database normalization and automated testing, it details the methods and toolsets that turn conceptual designs into a production-ready application.
 
 ### 3.2 Software Development Methodology
 The system build follows an **Iterative Prototyping Lifecycle** framework inside an overall Agile approach. This development model focuses on launching core mathematical modules quickly and refining them across consecutive evolution loops based on supervisor evaluations and user experience reviews.
@@ -380,11 +386,12 @@ Entity Relationship Diagrams (ERDs) model the logical and physical database tabl
 
 ### 3.5 System Implementation & Testing Toolstack
 The system build, validation, and local staging operations rely entirely on a modern JS toolset:
-* **Backend Application Stack:** **Node.js 18.x** runtime environment running **Express 4.21.x** to execute administrative tracking tasks and automated financial invoicing calculations.
+* **Backend Application Stack:** **Node.js 18.x** runtime environment running **Express 4.21.x** to execute administrative tracking tasks and automated financial invoicing calculations, utilizing **Nodemailer** for secure SMTP Gmail OTP dispatches.
 * **Local Database Stack:** **MySQL 8.0** server managed via PHPMyAdmin inside XAMPP to host client data profiles, consumption histories, and invoice ledger tables, supporting local JSON file caching fallback (`data/db.json`) for local deployments.
+* **PDF Rendering Engine:** **Python 3** compiler running the **ReportLab** dynamic library to compile official statement printouts on-demand.
 * **Local Web Server Engine:** Built-in Node.js HTTP server configured via Express, handling local routing rules and managing application session variables.
-* **Frontend Presentation Layer:** Clean **HTML5** page forms paired with **Tailwind CSS** styling and vanilla JavaScript loops to optimize data inputs on mobile viewports.
-* **Testing & Debugging Frameworks:** Console audit logs combined with custom HTTP scripts to run integration checks and track database logs.
+* **Frontend Presentation Layer:** Clean **HTML5** page forms paired with **Tailwind CSS** styling and vanilla JavaScript loops, including an integrated floating FAQ & support widget, to optimize data inputs on mobile viewports.
+* **Testing & Debugging Frameworks:** Console audit logs combined with custom HTTP scripts and Postman request environments to run integration checks and track database logs.
 
 ### 3.6 Project Schedule and Cost Overview
 * **Methodological Timeline Alignment:** The execution of this project follows a 24-week timeline structured around the Iterative Prototyping framework. This ensures that fact discovery, database modeling, Express scripting, and local deployment are balanced sequentially into fixed operational phases. (The detailed breakdown is outlined in Table 2 [Reused from Chapter 1, Section 1.9]).
@@ -400,7 +407,7 @@ This chapter defined the engineering methodology and practical techniques used t
 ## CHAPTER FOUR: SYSTEM ANALYSIS AND REQUIREMENT MODELLING
 
 ### 4.1 Introduction
-This chapter presents a detailed analysis of the current water billing system utilized by local Water Service Providers (WSPs), highlighting its manual inefficiencies and operational bottlenecks. It then details the functional and non-functional requirements of the proposed automated platform (**Aqualine**) and models the system's operational pathways using UML Use Case Diagrams and Sequence Flows.
+To improve an inefficient billing system, we must first map out its current operational bottlenecks. This chapter analyzes the manual workflows currently causing data latency, billing disputes, and revenue leakage at local WSPs. It defines the functional requirements (like OTP access and STK push) and non-functional boundaries (such as database ACID compliance) that shape Aqualine, using UML use cases and sequence diagrams to map out the system's data flows.
 
 ### 4.2 Description of the Current Manual System
 In the legacy manual water billing system currently deployed in many regional water utility networks, operations follow a paper-driven, highly batch-oriented path. Field meter readers walk physical routes, visually inspect mechanical meters, and manually write consumption indices on paper cards or hand-carried ledger log sheets. At the end of the month, these handwritten sheets are physically returned to the central head office. 
@@ -441,10 +448,13 @@ Analyzing the manual process highlights three critical operational bottlenecks:
 
 ### 4.5 Functional Requirements of the Proposed System
 To address these bottlenecks, the proposed **Aqualine** system implements the following functional core requirements:
-* **Customer Registration & Portal access:** Customers register accounts using phone numbers and names, obtaining dynamic session access tokens to view historical token purchases, statements, and receipts.
+* **Customer Registration & Portal access:** Customers register accounts using names, emails, and phone numbers. The registration system enforces strict Kenyan phone validation rules (accepting numbers starting with 07 or 01 and formatted to +254 standards) and blocks dummy or sequential test submissions (e.g., repeating digits or sequential series).
+* **Gmail SMTP OTP Authentication:** Supports secure passwordless logins by dispatching 6-digit one-time passcodes (OTP) to verified customer emails via Google SMTP. Verification sessions expire after 10 minutes to prevent credential replay vulnerabilities.
 * **Prepaid Billing & Random Token Generation:** Computes prepaid volume requirements based on KES 10 per litre (or KES 10,000 per 1,000 litres). Upon confirmed payment, the system generates a secure 9-digit water prepaid token code.
 * **M-Pesa STK Push Integration:** Customer triggers M-Pesa STK Push payments from their portal. The Express backend communicates with Safaricom's Daraja API, listens to callbacks, validates transactions, and automatically dispatches tokens.
 * **Manual Receipt Reconciliation:** For customers paying via standard paybill channels, they manually submit transaction codes. Administrative clerks review, approve, or reject these submissions from a secure console.
+* **Downloadable PDF Account Statements:** On-demand PDF account statements compilation. Clicking "Download Statement" invokes a Python runtime executing a ReportLab script that converts transaction history and dispute records into a clean PDF document.
+* **Interactive Help Widget:** A client-side floating support tool containing a searchable FAQ catalog, instant water tariff calculator, and support ticket submissions.
 * **Immutable Double-Entry Ledger:** Confirmed payments trigger an automatic split (70% savings, 30% operations) into ledger accounts. Sweeper jobs run hourly to capture and sweep unsettled funds into treasury tables.
 * **Maker-Checker Refund Segregation:** An administrative user (the Maker) creates a refund request for a billing dispute. A completely separate administrator (the Checker) must verify and approve it. The system blocks approval if the Maker and Checker are the same username.
 
@@ -528,7 +538,7 @@ sequenceDiagram
 ## CHAPTER FIVE: SYSTEM DESIGN
 
 ### 5.1 Introduction
-This chapter explains the physical architecture, structural database layout, and user interfaces of the proposed Aqualine water billing platform. It details how logical entities map to relational tables and outlines screen wireframe designs.
+Design is the bridge where system requirements transform into structural blueprints. This chapter details Aqualine's decoupled multi-tier architecture, showing how client web portals interact with Node.js controllers and data storage layers. It details the 3NF database design, data dictionary configurations, and responsive user interfaces engineered to secure billing transactions and support double-entry accounting.
 
 ### 5.2 System Architecture Design
 Aqualine is built using a modern, decoupled multi-tier architecture. It separates presentation layers from data management routers using an API framework:
@@ -589,8 +599,11 @@ erDiagram
         char36 id PK
         varchar255 full_name
         varchar32 phone UK
+        varchar255 email
         varchar32 login_code
         varchar64 login_token UK
+        varchar16 email_otp
+        datetime3 otp_expires_at
         datetime3 created_at
         datetime3 updated_at
         datetime3 last_activity_at
@@ -678,8 +691,11 @@ Stores customer authentication records and contact parameters.
 * **`id`** (CHAR(36), PK, NOT NULL): Unique UUID generated for each registered client.
 * **`full_name`** (VARCHAR(255), NOT NULL): Customer's full name.
 * **`phone`** (VARCHAR(32), Unique, NOT NULL): Verified telephone number used as login identifier.
+* **`email`** (VARCHAR(255), NULL): Customer's email address.
 * **`login_code`** (VARCHAR(32), NULL): Temporary numeric verification code.
 * **`login_token`** (VARCHAR(64), Unique, NULL): Active cryptographically generated authentication token.
+* **`email_otp`** (VARCHAR(16), NULL): The 6-digit one-time passcode sent to the customer's email.
+* **`otp_expires_at`** (DATETIME(3), NULL): Expiry time for the email OTP code.
 * **`created_at`** / **`updated_at`** (DATETIME(3), NOT NULL): Record creation and change timestamps.
 * **`last_activity_at`** (DATETIME(3), NOT NULL): Track time of last customer API transaction access.
 
@@ -754,9 +770,12 @@ Maintains dynamic system-wide configuration controls and running balances.
 ### 5.4 User Interface Design
 The user interface is designed to be mobile-responsive using **Tailwind CSS** configurations, providing clear layouts:
 1. **Public/Client Self-Service Dashboard:** 
-   - *Customer Registration Box:* Form fields for name and phone, dynamic SMS login code inputs, and secure account creation triggers.
+   - *Customer Registration Box:* Form fields for name, email, and phone, with strict Kenyan number prefix validations and blocks against dummy input sequences.
+   - *Dual Authentication Flow:* Prompts users to log in via dynamic 6-digit email OTP verify overlays or standard Name and Phone inputs.
    - *Payment Console:* Package choices (`litre` vs `1000_litre`), billing phone input, amount values, STK Push triggers, and manual receipt ID code submissions.
    - *Active Tokens Board:* Clean visual cards showing 9-digit token numbers, quantities, dates bought, and SMS status logs.
+   - *Statement Download Desk:* On-demand download links invoking compile-on-demand Python PDF generation.
+   - *Interactive Floating Help Widget:* Hovering action button expanding to show a live FAQ search index, a water consumption price calculator, and an administrative support ticket form.
 2. **Administrator Control Panel:**
    - *Overview Metrics:* Real-time grid displaying running totals (Collections, Operations Float, Savings balances) dynamically fetched from backend finance endpoints.
    - *Manual Approvals Console:* Table sorting pending Till transaction claims, displaying submitted receipt codes, payment values, and buttons to approve or reject.
@@ -773,7 +792,7 @@ This chapter detailed the structural designs of the Aqualine water billing platf
 ## CHAPTER SIX: SYSTEM IMPLEMENTATION
 
 ### 6.1 Introduction
-This chapter explains the physical realization of the designed Aqualine Automated Water Billing System. It presents the technical toolset utilized for software development and unit verification, outlines the system test plan, describes the test cases and test data matrix implemented to guarantee operational security, and proposes the optimal change-over deployment strategy for local Water Service Providers (WSPs).
+Coding and deployment represent the final conversion of software design into operational reality. This chapter presents the toolstack (Node.js/Express, MySQL, and Python ReportLab) used to write and compile Aqualine. It outlines our hybrid testing methodology, presents the validation test matrix confirming system integrity, and proposes a phased change-over strategy for safe implementation at local utilities.
 
 ### 6.2 Tools Used for Coding and Testing
 The development, validation, and execution of the Aqualine system utilize a decoupled JavaScript and relational MySQL stack, backed by specialized software implementation tools:
@@ -782,7 +801,9 @@ The development, validation, and execution of the Aqualine system utilize a deco
 * **VS Code (Visual Studio Code):** The primary Integrated Development Environment (IDE) used to write JavaScript routes, configuration files, and HTML template blocks. Extended packages like ES7+ React/Redux/GraphQL/React-Native snippets and Prettier were integrated to enforce syntax checks and clean formatting rules.
 * **Node.js 18.x Runtime:** The backend execution engine, running a single-threaded asynchronous event loop to process concurrent billing callbacks without memory leakage.
 * **Express 4.21.x Framework:** Installed via NPM (Node Package Manager) to organize REST APIs, route HTTP requests, parse JSON request payloads, and host static frontend files.
+* **Nodemailer Library:** Integrated within the Express backend to manage Simple Mail Transfer Protocol (SMTP) operations for dispatching 6-digit verification passcodes (OTP) securely to client inboxes.
 * **MySQL 8.0 & phpMyAdmin (XAMPP):** The relational database storage engine used to run relational transactions, verify foreign key adjustments, and log double-entry ledger listings under ACID rules.
+* **Python 3 & ReportLab Library:** Used as an external compiler to generate high-quality vector PDF account statements dynamically from raw JSON data streams on customer demand.
 * **Tailwind CSS Utility Framework:** Used via CDN configuration inside HTML pages to compile mobile-responsive UI styles, visual grid grids, and smooth button hover animations.
 * **Dotenv Library:** Employed to process environment configurations (`.env`), keeping M-Pesa secrets, administrative API keys, and database passwords separate from source code.
 
@@ -805,6 +826,10 @@ A modular hybrid testing approach was adopted. Individual controllers were unit-
 | **TC-04** | Webhook STK Callback | POST to `/api/payments/mpesa/callback` with receipt `NL1234567` | Payment status changes to `paid`; Double-entry sweep splits funds | Status updated to `paid`; ledger updated (savings 70%, ops 30%) | **PASSED** |
 | **TC-05** | Maker-Checker Security | Refund approve request where maker key equals checker key | Payout blocked with auth error; returns HTTP 401 | Returned block error `{"error":"Maker and checker must be different actors"}` | **PASSED** |
 | **TC-06** | Database Query Safety | Input `' OR '1'='1` in login fields | Strict validation checks; query executed via prepared parameters | Safe block; returns authentication failed (HTTP 401) | **PASSED** |
+| **TC-07** | Gmail OTP Authentication | Login request using correct OTP code for `customer@gmail.com` | Auth token returned successfully with HTTP 200 | Session token returned; login cookie set | **PASSED** |
+| **TC-08** | Phone Anti-Dummy Filter | Registration with phone `0700000000` (repeating dummy digits) | Validation error stating dummy numbers are blocked (HTTP 400) | Blocked with HTTP 400 validation error response | **PASSED** |
+| **TC-09** | PDF Statement Export | GET request to `/api/customer/statement/pdf` with active user session | Dynamic ReportLab execution; returns PDF stream with HTTP 200 | PDF document buffer successfully streamed to client | **PASSED** |
+| **TC-10** | FAQ Search & Price Calculator | Input "prepaid token" in help search; KES 250 in tariff calculator | Renders relevant articles; computes litres = 25 | Displayed FAQ links; returned 25 litres calculated | **PASSED** |
 
 *Table 3: System Verification Test Matrix*
 
@@ -851,7 +876,7 @@ This chapter presented the physical system implementation parameters of Aqualine
 ## CHAPTER SEVEN: LIMITATIONS, CONCLUSIONS AND RECOMMENDATIONS
 
 ### 7.1 Introduction
-This chapter concludes the academic study and development of the Aqualine water billing platform. It outlines the technical, financial, and operational limitations encountered during the project research and coding stages, presents the final conclusion summarizing the project achievements in relation to primary objectives, and proposes recommendations for future engineering enhancements.
+No engineering solution exists in a vacuum; recognizing system boundaries is key to future iteration and scalability. This chapter concludes the Aqualine study by highlighting technical and operational limitations, such as sandbox M-Pesa constraints. It summarizes our findings relative to the core objectives and proposes future enhancements, including IoT flow sensors and predictive analytics.
 
 ### 7.2 Limitations
 Several research and development limitations were identified during the implementation of Aqualine:
