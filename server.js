@@ -98,29 +98,85 @@ function extractBearerToken(authorization) {
   return authorization.slice(7).trim();
 }
 
-function requireAdmin(req, res, next) {
-  const headerKey = req.get('x-admin-key');
-  const bearerKey = extractBearerToken(req.get('authorization'));
-  const providedKey = headerKey || bearerKey;
+async function requireAdmin(req, res, next) {
+  try {
+    const headerKey = req.get('x-admin-key');
+    const bearerKey = extractBearerToken(req.get('authorization'));
+    const providedKey = headerKey || bearerKey;
 
-  if (!providedKey || providedKey !== ADMIN_KEY) {
-    return res.status(401).json({ error: 'Unauthorized admin access' });
+    if (!providedKey) {
+      return res.status(401).json({ error: 'Unauthorized admin access' });
+    }
+
+    let currentAdminKey = ADMIN_KEY;
+
+    if (mysqlPool) {
+      try {
+        const [rows] = await mysqlPool.query(`SELECT admin_key FROM \`${MYSQL_TABLES.finance}\` WHERE id = 1 LIMIT 1`);
+        if (rows.length > 0 && rows[0].admin_key !== null && rows[0].admin_key !== undefined) {
+          currentAdminKey = rows[0].admin_key;
+        }
+      } catch (err) {
+        console.error(`Failed to fetch admin key from MySQL: ${err.message}`);
+        const db = readDb();
+        if (db.finance && db.finance.adminKey) {
+          currentAdminKey = db.finance.adminKey;
+        }
+      }
+    } else {
+      const db = readDb();
+      if (db.finance && db.finance.adminKey) {
+        currentAdminKey = db.finance.adminKey;
+      }
+    }
+
+    if (providedKey !== currentAdminKey) {
+      return res.status(401).json({ error: 'Unauthorized admin access' });
+    }
+
+    next();
+  } catch (error) {
+    next(error);
   }
-
-  next();
 }
 
-function requireApprover(req, res, next) {
-  if (!APPROVER_KEY) {
-    return next();
-  }
+async function requireApprover(req, res, next) {
+  try {
+    let currentApproverKey = APPROVER_KEY;
 
-  const providedApproverKey = req.get('x-approver-key');
-  if (!providedApproverKey || providedApproverKey !== APPROVER_KEY) {
-    return res.status(401).json({ error: 'Unauthorized approver access' });
-  }
+    if (mysqlPool) {
+      try {
+        const [rows] = await mysqlPool.query(`SELECT approver_key FROM \`${MYSQL_TABLES.finance}\` WHERE id = 1 LIMIT 1`);
+        if (rows.length > 0 && rows[0].approver_key !== null && rows[0].approver_key !== undefined) {
+          currentApproverKey = rows[0].approver_key;
+        }
+      } catch (err) {
+        console.error(`Failed to fetch approver key from MySQL: ${err.message}`);
+        const db = readDb();
+        if (db.finance && db.finance.approverKey) {
+          currentApproverKey = db.finance.approverKey;
+        }
+      }
+    } else {
+      const db = readDb();
+      if (db.finance && db.finance.approverKey) {
+        currentApproverKey = db.finance.approverKey;
+      }
+    }
 
-  next();
+    if (!currentApproverKey) {
+      return next();
+    }
+
+    const providedApproverKey = req.get('x-approver-key');
+    if (!providedApproverKey || providedApproverKey !== currentApproverKey) {
+      return res.status(401).json({ error: 'Unauthorized approver access' });
+    }
+
+    next();
+  } catch (error) {
+    next(error);
+  }
 }
 
 function parseAuthorizationToken(req) {
@@ -367,10 +423,50 @@ async function ensureMysqlSchema() {
       policy JSON NOT NULL,
       balances JSON NOT NULL,
       last_auto_settlement_date VARCHAR(16) NOT NULL DEFAULT '',
+      admin_key VARCHAR(255) DEFAULT NULL,
+      approver_key VARCHAR(255) DEFAULT NULL,
       initialized_at DATETIME(3) NOT NULL,
       updated_at DATETIME(3) NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+
+  // Ensure admin_key and approver_key columns exist in finance table (handles updates for existing installs)
+  const financeColumns = [
+    ['admin_key', 'VARCHAR(255) DEFAULT NULL'],
+    ['approver_key', 'VARCHAR(255) DEFAULT NULL']
+  ];
+
+  for (const [columnName, columnDefinition] of financeColumns) {
+    const [rows] = await mysqlPool.query(
+      `SELECT COUNT(*) AS count
+       FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = ?
+         AND TABLE_NAME = ?
+         AND COLUMN_NAME = ?`,
+      [MYSQL_DATABASE, MYSQL_TABLES.finance, columnName]
+    );
+
+    if (Number(rows[0]?.count || 0) === 0) {
+      await mysqlPool.query(
+        `ALTER TABLE \`${MYSQL_TABLES.finance}\` ADD COLUMN \`${columnName}\` ${columnDefinition}`
+      );
+    }
+  }
+
+  // Backfill admin_key and approver_key from environment variables if they are currently NULL
+  await mysqlPool.query(
+    `UPDATE \`${MYSQL_TABLES.finance}\`
+     SET admin_key = ?
+     WHERE id = 1 AND admin_key IS NULL`,
+    [ADMIN_KEY]
+  );
+
+  await mysqlPool.query(
+    `UPDATE \`${MYSQL_TABLES.finance}\`
+     SET approver_key = ?
+     WHERE id = 1 AND approver_key IS NULL`,
+    [APPROVER_KEY || null]
+  );
 }
 
 async function loadDbFromMysql() {
@@ -459,6 +555,8 @@ async function loadDbFromMysql() {
       policy: mysqlParseJson(financeRows[0].policy, defaultFinancePolicy()),
       balances: mysqlParseJson(financeRows[0].balances, { collections: 0, operations: 0, savings: 0 }),
       lastAutoSettlementDate: financeRows[0].last_auto_settlement_date || '',
+      adminKey: financeRows[0].admin_key || '',
+      approverKey: financeRows[0].approver_key || '',
       initializedAt: financeRows[0].initialized_at instanceof Date ? financeRows[0].initialized_at.toISOString() : financeRows[0].initialized_at,
       updatedAt: financeRows[0].updated_at instanceof Date ? financeRows[0].updated_at.toISOString() : financeRows[0].updated_at
     } : undefined
@@ -611,14 +709,16 @@ async function persistDbToMysql() {
 
     if (db.finance) {
       await mysqlPool.query(
-        `INSERT INTO \`${MYSQL_TABLES.finance}\` (id, policy, balances, last_auto_settlement_date, initialized_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO \`${MYSQL_TABLES.finance}\` (id, policy, balances, last_auto_settlement_date, admin_key, approver_key, initialized_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE policy = VALUES(policy), balances = VALUES(balances), last_auto_settlement_date = VALUES(last_auto_settlement_date), initialized_at = VALUES(initialized_at), updated_at = VALUES(updated_at)`,
         [
           1,
           mysqlJson(db.finance.policy || defaultFinancePolicy()),
           mysqlJson(db.finance.balances || { collections: 0, operations: 0, savings: 0 }),
           db.finance.lastAutoSettlementDate || '',
+          db.finance.adminKey || ADMIN_KEY,
+          db.finance.approverKey || APPROVER_KEY,
           db.finance.initializedAt ? new Date(db.finance.initializedAt) : new Date(),
           db.finance.updatedAt ? new Date(db.finance.updatedAt) : new Date()
         ]
@@ -857,6 +957,14 @@ function ensureDbSchema(db) {
 
   if (!db.finance.policy) {
     db.finance.policy = defaultFinancePolicy();
+  }
+
+  if (!db.finance.adminKey) {
+    db.finance.adminKey = ADMIN_KEY;
+  }
+
+  if (!db.finance.approverKey) {
+    db.finance.approverKey = APPROVER_KEY;
   }
 
   if (!db.finance.lastAutoSettlementDate) {
